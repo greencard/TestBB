@@ -12246,8 +12246,8 @@ cr.getProjectModel = function() { return [
 	[
 	[
 		"Layout 1",
-		1024,
-		768,
+		480,
+		360,
 		false,
 		"Event sheet 1",
 		1950560624317476,
@@ -12268,7 +12268,7 @@ cr.getProjectModel = function() { return [
 			0,
 			[
 			[
-				[527, 440, 0, 270, 64, 0, 0, 1, 0.5, 0.5, 0, 0, []],
+				[249, 170, 0, 270, 64, 0, 0, 1, 0.5, 0.5, 0, 0, []],
 				0,
 				0,
 				[
@@ -12326,8 +12326,42 @@ cr.getProjectModel = function() { return [
 						[
 							10,
 							[
-								19,
-								cr.system_object.prototype.exps.windowwidth
+								10,
+								[
+									10,
+									[
+										10,
+										[
+											10,
+											[
+												19,
+												cr.system_object.prototype.exps.windowwidth
+											]
+											,[
+												2,
+												"x"
+											]
+										]
+										,[
+											19,
+											cr.system_object.prototype.exps.windowheight
+										]
+									]
+									,[
+										2,
+										" "
+									]
+								]
+								,[
+									19,
+									cr.system_object.prototype.exps.viewporttop
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
 							]
 							,[
 								2,
@@ -12336,7 +12370,13 @@ cr.getProjectModel = function() { return [
 						]
 						,[
 							19,
-							cr.system_object.prototype.exps.windowheight
+							cr.system_object.prototype.exps.viewportbottom
+							,[
+[
+								0,
+								0
+							]
+							]
 						]
 					]
 				]
@@ -12349,8 +12389,8 @@ cr.getProjectModel = function() { return [
 	],
 	"media/",
 	false,
-	1024,
-	768,
+	480,
+	360,
 	1,
 	true,
 	true,
