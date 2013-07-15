@@ -12314,6 +12314,43 @@ cr.getProjectModel = function() { return [
 			],
 			[
 			[
+				-1,
+				cr.system_object.prototype.acts.SetCanvasSize,
+				null,
+				1014202430602152
+				,[
+				[
+					0,
+					[
+						0,
+						480
+					]
+				]
+,				[
+					0,
+					[
+						0,
+						380
+					]
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.acts.ScrollY,
+				null,
+				6764122343567321
+				,[
+				[
+					0,
+					[
+						0,
+						360
+					]
+				]
+				]
+			]
+,			[
 				1,
 				cr.plugins_.Browser.prototype.acts.Alert,
 				null,
@@ -12391,7 +12428,7 @@ cr.getProjectModel = function() { return [
 	false,
 	480,
 	360,
-	3,
+	1,
 	true,
 	true,
 	true,
