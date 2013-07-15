@@ -12395,7 +12395,7 @@ cr.getProjectModel = function() { return [
 	true,
 	true,
 	true,
-	"1.0.3.1",
+	"1.2.7.1",
 	1,
 	false,
 	0,
