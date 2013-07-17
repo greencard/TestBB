@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.powers.mobile" version="1.2.8.3">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="2" version="1.0">
 
-	<name>BB3</name>
-	<description>BB3 Test</description>
-	<author email="korenko@ukr.net">Sergey</author>
+	<name>Sharapoff</name>
+	<description>5 Reeels Slot</description>
+	<author email="sergey@powerlottery.mobi">S. Korenko</author>
 
 	<gap:platforms>
 		<gap:platform name="ios" />
@@ -17,8 +17,8 @@
 
 	<preference name="permissions" value="none"/>
 
-	<feature name="http://api.phonegap.com/1.0/network"/>	<preference name="orientation" value="default" />
-	<preference name="fullscreen" value="false" />
+	<feature name="http://api.phonegap.com/1.0/network"/>	<preference name="orientation" value="landscape" />
+	<preference name="fullscreen" value="true" />
 	<preference name="target-device" value="universal" />
 
 	<!-- Optional splash screen image, e.g.: -->
