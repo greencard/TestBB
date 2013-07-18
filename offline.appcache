@@ -1,0 +1,20 @@
+﻿CACHE MANIFEST
+#1374141854
+index.html
+c2runtime.js
+jquery-2.0.0.min.js
+logo.png
+images\tiledbackground.png
+images\tiledbackground3.png
+images\bird-sheet0.png
+images\terrain-sheet0.png
+images\sling_back-sheet0.png
+images\sling_front-sheet0.png
+images\string_back-sheet0.png
+images\string_front-sheet0.png
+images\blocco-sheet0.png
+images\blocco2-sheet0.png
+images\target-sheet0.png
+images\explode.png
+NETWORK:
+*
