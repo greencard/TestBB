@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="2" version="1.4.0.0">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="3" version="1.0.2">
 
-	<name>Slot</name>
-	<description>5 Reeels Slot</description>
-	<author email="skorenko@ukr.net">S. Korenko</author>
+	<name>hb</name>
+	<description>AB Clone demo</description>
+	<author email="stupakovs@ukr.net">SS</author>
 
 	<gap:platforms>
 		<gap:platform name="ios" />
