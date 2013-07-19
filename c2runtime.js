@@ -15340,7 +15340,7 @@ cr.getProjectModel = function() { return [
 	false,
 	480,
 	360,
-	4,
+	1,
 	true,
 	true,
 	true,
