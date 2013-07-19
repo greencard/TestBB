@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="3" version="1.0.3">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.powers.mobile" version="1.1.0.1">
 
-	<name>ab</name>
-	<description>AB Clone demo</description>
-	<author email="stupakovs@ukr.net">SS</author>
+	<name>s</name>
+	<description>slot</description>
+	<author>S. Korenko</author>
 
 	<gap:platforms>
 		<gap:platform name="ios" />
