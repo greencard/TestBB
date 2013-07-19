@@ -15241,6 +15241,21 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
+				-1,
+				cr.system_object.prototype.acts.ScrollY,
+				null,
+				3746072001505625
+				,[
+				[
+					0,
+					[
+						0,
+						360
+					]
+				]
+				]
+			]
+,			[
 				12,
 				cr.plugins_.Text.prototype.acts.SetText,
 				null,
@@ -15329,7 +15344,7 @@ cr.getProjectModel = function() { return [
 	true,
 	true,
 	true,
-	"1.1.0.1",
+	"1.1.3.1",
 	1,
 	false,
 	0,
