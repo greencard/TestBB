@@ -11672,626 +11672,6 @@ cr.plugins_.Sprite = function(runtime)
 }());
 ;
 ;
-cr.plugins_.Text = function(runtime)
-{
-	this.runtime = runtime;
-};
-(function ()
-{
-	var pluginProto = cr.plugins_.Text.prototype;
-	pluginProto.onCreate = function ()
-	{
-		pluginProto.acts.SetWidth = function (w)
-		{
-			if (this.width !== w)
-			{
-				this.width = w;
-				this.text_changed = true;	// also recalculate text wrapping
-				this.set_bbox_changed();
-			}
-		};
-	};
-	pluginProto.Type = function(plugin)
-	{
-		this.plugin = plugin;
-		this.runtime = plugin.runtime;
-	};
-	var typeProto = pluginProto.Type.prototype;
-	typeProto.onCreate = function()
-	{
-	};
-	typeProto.onLostWebGLContext = function ()
-	{
-		if (this.is_family)
-			return;
-		var i, len, inst;
-		for (i = 0, len = this.instances.length; i < len; i++)
-		{
-			inst = this.instances[i];
-			inst.mycanvas = null;
-			inst.myctx = null;
-			inst.mytex = null;
-		}
-	};
-	pluginProto.Instance = function(type)
-	{
-		this.type = type;
-		this.runtime = type.runtime;
-		if (this.recycled)
-			this.lines.length = 0;
-		else
-			this.lines = [];		// for word wrapping
-		this.text_changed = true;
-	};
-	var instanceProto = pluginProto.Instance.prototype;
-	var requestedWebFonts = {};		// already requested web fonts have an entry here
-	instanceProto.onCreate = function()
-	{
-		this.text = this.properties[0];
-		this.visible = (this.properties[1] === 0);		// 0=visible, 1=invisible
-		this.font = this.properties[2];
-		this.color = this.properties[3];
-		this.halign = this.properties[4];				// 0=left, 1=center, 2=right
-		this.valign = this.properties[5];				// 0=top, 1=center, 2=bottom
-		this.wrapbyword = (this.properties[7] === 0);	// 0=word, 1=character
-		this.lastwidth = this.width;
-		this.lastwrapwidth = this.width;
-		this.lastheight = this.height;
-		this.line_height_offset = this.properties[8];
-		this.facename = "";
-		this.fontstyle = "";
-		var arr = this.font.split(" ");
-		this.ptSize = 0;
-		this.textWidth = 0;
-		this.textHeight = 0;
-		var i;
-		for (i = 0; i < arr.length; i++)
-		{
-			if (arr[i].substr(arr[i].length - 2, 2) === "pt")
-			{
-				this.ptSize = parseInt(arr[i].substr(0, arr[i].length - 2));
-				this.pxHeight = Math.ceil((this.ptSize / 72.0) * 96.0) + 4;	// assume 96dpi...
-				if (i > 0)
-					this.fontstyle = arr[i - 1];
-				this.facename = arr[i + 1];
-				for (i = i + 2; i < arr.length; i++)
-					this.facename += " " + arr[i];
-				break;
-			}
-		}
-		this.mycanvas = null;
-		this.myctx = null;
-		this.mytex = null;
-		this.need_text_redraw = false;
-		this.last_render_tick = this.runtime.tickcount;
-		if (this.recycled)
-			this.rcTex.set(0, 0, 1, 1);
-		else
-			this.rcTex = new cr.rect(0, 0, 1, 1);
-		if (this.runtime.glwrap)
-			this.runtime.tickMe(this);
-;
-	};
-	instanceProto.saveToJSON = function ()
-	{
-		return {
-			"t": this.text,
-			"f": this.font,
-			"c": this.color,
-			"ha": this.halign,
-			"va": this.valign,
-			"wr": this.wrapbyword,
-			"lho": this.line_height_offset,
-			"fn": this.facename,
-			"fs": this.fontstyle,
-			"ps": this.ptSize,
-			"pxh": this.pxHeight,
-			"tw": this.textWidth,
-			"th": this.textHeight,
-			"lrt": this.last_render_tick
-		};
-	};
-	instanceProto.loadFromJSON = function (o)
-	{
-		this.text = o["t"];
-		this.font = o["f"];
-		this.color = o["c"];
-		this.halign = o["ha"];
-		this.valign = o["va"];
-		this.wrapbyword = o["wr"];
-		this.line_height_offset = o["lho"];
-		this.facename = o["fn"];
-		this.fontstyle = o["fs"];
-		this.ptSize = o["ps"];
-		this.pxHeight = o["pxh"];
-		this.textWidth = o["tw"];
-		this.textHeight = o["th"];
-		this.last_render_tick = o["lrt"];
-		this.text_changed = true;
-		this.lastwidth = this.width;
-		this.lastwrapwidth = this.width;
-		this.lastheight = this.height;
-	};
-	instanceProto.tick = function ()
-	{
-		if (this.runtime.glwrap && this.mytex && (this.runtime.tickcount - this.last_render_tick >= 300))
-		{
-			var layer = this.layer;
-            this.update_bbox();
-            var bbox = this.bbox;
-            if (bbox.right < layer.viewLeft || bbox.bottom < layer.viewTop || bbox.left > layer.viewRight || bbox.top > layer.viewBottom)
-			{
-				this.runtime.glwrap.deleteTexture(this.mytex);
-				this.mytex = null;
-				this.myctx = null;
-				this.mycanvas = null;
-			}
-		}
-	};
-	instanceProto.onDestroy = function ()
-	{
-		this.myctx = null;
-		this.mycanvas = null;
-		if (this.runtime.glwrap && this.mytex)
-			this.runtime.glwrap.deleteTexture(this.mytex);
-		this.mytex = null;
-	};
-	instanceProto.updateFont = function ()
-	{
-		this.font = this.fontstyle + " " + this.ptSize.toString() + "pt " + this.facename;
-		this.text_changed = true;
-		this.runtime.redraw = true;
-	};
-	instanceProto.draw = function(ctx, glmode)
-	{
-		ctx.font = this.font;
-		ctx.textBaseline = "top";
-		ctx.fillStyle = this.color;
-		ctx.globalAlpha = glmode ? 1 : this.opacity;
-		var myscale = 1;
-		if (glmode)
-		{
-			myscale = this.layer.getScale();
-			ctx.save();
-			ctx.scale(myscale, myscale);
-		}
-		if (this.text_changed || this.width !== this.lastwrapwidth)
-		{
-			this.type.plugin.WordWrap(this.text, this.lines, ctx, this.width, this.wrapbyword);
-			this.text_changed = false;
-			this.lastwrapwidth = this.width;
-		}
-		this.update_bbox();
-		var penX = glmode ? 0 : this.bquad.tlx;
-		var penY = glmode ? 0 : this.bquad.tly;
-		if (this.runtime.pixel_rounding)
-		{
-			penX = (penX + 0.5) | 0;
-			penY = (penY + 0.5) | 0;
-		}
-		if (this.angle !== 0 && !glmode)
-		{
-			ctx.save();
-			ctx.translate(penX, penY);
-			ctx.rotate(this.angle);
-			penX = 0;
-			penY = 0;
-		}
-		var endY = penY + this.height;
-		var line_height = this.pxHeight;
-		line_height += (this.line_height_offset * this.runtime.devicePixelRatio);
-		var drawX;
-		var i;
-		if (this.valign === 1)		// center
-			penY += Math.max(this.height / 2 - (this.lines.length * line_height) / 2, 0);
-		else if (this.valign === 2)	// bottom
-			penY += Math.max(this.height - (this.lines.length * line_height) - 2, 0);
-		for (i = 0; i < this.lines.length; i++)
-		{
-			drawX = penX;
-			if (this.halign === 1)		// center
-				drawX = penX + (this.width - this.lines[i].width) / 2;
-			else if (this.halign === 2)	// right
-				drawX = penX + (this.width - this.lines[i].width);
-			ctx.fillText(this.lines[i].text, drawX, penY);
-			penY += line_height;
-			if (penY >= endY - line_height)
-				break;
-		}
-		if (this.angle !== 0 || glmode)
-			ctx.restore();
-		this.last_render_tick = this.runtime.tickcount;
-	};
-	instanceProto.drawGL = function(glw)
-	{
-		if (this.width < 1 || this.height < 1)
-			return;
-		var need_redraw = this.text_changed || this.need_text_redraw;
-		this.need_text_redraw = false;
-		var layer_scale = this.layer.getScale();
-		var layer_angle = this.layer.getAngle();
-		var rcTex = this.rcTex;
-		var floatscaledwidth = layer_scale * this.width;
-		var floatscaledheight = layer_scale * this.height;
-		var scaledwidth = Math.ceil(floatscaledwidth);
-		var scaledheight = Math.ceil(floatscaledheight);
-		var windowWidth = this.runtime.width;
-		var windowHeight = this.runtime.height;
-		var halfw = windowWidth / 2;
-		var halfh = windowHeight / 2;
-		if (!this.myctx)
-		{
-			this.mycanvas = document.createElement("canvas");
-			this.mycanvas.width = scaledwidth;
-			this.mycanvas.height = scaledheight;
-			this.lastwidth = scaledwidth;
-			this.lastheight = scaledheight;
-			need_redraw = true;
-			this.myctx = this.mycanvas.getContext("2d");
-		}
-		if (scaledwidth !== this.lastwidth || scaledheight !== this.lastheight)
-		{
-			this.mycanvas.width = scaledwidth;
-			this.mycanvas.height = scaledheight;
-			if (this.mytex)
-			{
-				glw.deleteTexture(this.mytex);
-				this.mytex = null;
-			}
-			need_redraw = true;
-		}
-		if (need_redraw)
-		{
-			this.myctx.clearRect(0, 0, scaledwidth, scaledheight);
-			this.draw(this.myctx, true);
-			if (!this.mytex)
-				this.mytex = glw.createEmptyTexture(scaledwidth, scaledheight, this.runtime.linearSampling, this.runtime.isMobile);
-			glw.videoToTexture(this.mycanvas, this.mytex, this.runtime.isMobile);
-		}
-		this.lastwidth = scaledwidth;
-		this.lastheight = scaledheight;
-		glw.setTexture(this.mytex);
-		glw.setOpacity(this.opacity);
-		glw.resetModelView();
-		glw.translate(-halfw, -halfh);
-		glw.updateModelView();
-		var q = this.bquad;
-		var tlx = this.layer.layerToCanvas(q.tlx, q.tly, true);
-		var tly = this.layer.layerToCanvas(q.tlx, q.tly, false);
-		var trx = this.layer.layerToCanvas(q.trx, q.try_, true);
-		var try_ = this.layer.layerToCanvas(q.trx, q.try_, false);
-		var brx = this.layer.layerToCanvas(q.brx, q.bry, true);
-		var bry = this.layer.layerToCanvas(q.brx, q.bry, false);
-		var blx = this.layer.layerToCanvas(q.blx, q.bly, true);
-		var bly = this.layer.layerToCanvas(q.blx, q.bly, false);
-		if (this.runtime.pixel_rounding || (this.angle === 0 && layer_angle === 0))
-		{
-			var ox = ((tlx + 0.5) | 0) - tlx;
-			var oy = ((tly + 0.5) | 0) - tly
-			tlx += ox;
-			tly += oy;
-			trx += ox;
-			try_ += oy;
-			brx += ox;
-			bry += oy;
-			blx += ox;
-			bly += oy;
-		}
-		if (this.angle === 0 && layer_angle === 0)
-		{
-			trx = tlx + scaledwidth;
-			try_ = tly;
-			brx = trx;
-			bry = tly + scaledheight;
-			blx = tlx;
-			bly = bry;
-			rcTex.right = 1;
-			rcTex.bottom = 1;
-		}
-		else
-		{
-			rcTex.right = floatscaledwidth / scaledwidth;
-			rcTex.bottom = floatscaledheight / scaledheight;
-		}
-		glw.quadTex(tlx, tly, trx, try_, brx, bry, blx, bly, rcTex);
-		glw.resetModelView();
-		glw.scale(layer_scale, layer_scale);
-		glw.rotateZ(-this.layer.getAngle());
-		glw.translate((this.layer.viewLeft + this.layer.viewRight) / -2, (this.layer.viewTop + this.layer.viewBottom) / -2);
-		glw.updateModelView();
-		this.last_render_tick = this.runtime.tickcount;
-	};
-	var wordsCache = [];
-	pluginProto.TokeniseWords = function (text)
-	{
-		wordsCache.length = 0;
-		var cur_word = "";
-		var ch;
-		var i = 0;
-		while (i < text.length)
-		{
-			ch = text.charAt(i);
-			if (ch === "\n")
-			{
-				if (cur_word.length)
-				{
-					wordsCache.push(cur_word);
-					cur_word = "";
-				}
-				wordsCache.push("\n");
-				++i;
-			}
-			else if (ch === " " || ch === "\t" || ch === "-")
-			{
-				do {
-					cur_word += text.charAt(i);
-					i++;
-				}
-				while (i < text.length && (text.charAt(i) === " " || text.charAt(i) === "\t"));
-				wordsCache.push(cur_word);
-				cur_word = "";
-			}
-			else if (i < text.length)
-			{
-				cur_word += ch;
-				i++;
-			}
-		}
-		if (cur_word.length)
-			wordsCache.push(cur_word);
-	};
-	var linesCache = [];
-	function allocLine()
-	{
-		if (linesCache.length)
-			return linesCache.pop();
-		else
-			return {};
-	};
-	function freeLine(l)
-	{
-		linesCache.push(l);
-	};
-	function freeAllLines(arr)
-	{
-		var i, len;
-		for (i = 0, len = arr.length; i < len; i++)
-		{
-			freeLine(arr[i]);
-		}
-		arr.length = 0;
-	};
-	pluginProto.WordWrap = function (text, lines, ctx, width, wrapbyword)
-	{
-		if (!text || !text.length)
-		{
-			freeAllLines(lines);
-			return;
-		}
-		if (width <= 2.0)
-		{
-			freeAllLines(lines);
-			return;
-		}
-		if (text.length <= 100 && text.indexOf("\n") === -1)
-		{
-			var all_width = ctx.measureText(text).width;
-			if (all_width <= width)
-			{
-				freeAllLines(lines);
-				lines.push(allocLine());
-				lines[0].text = text;
-				lines[0].width = all_width;
-				return;
-			}
-		}
-		this.WrapText(text, lines, ctx, width, wrapbyword);
-	};
-	pluginProto.WrapText = function (text, lines, ctx, width, wrapbyword)
-	{
-		var wordArray;
-		if (wrapbyword)
-		{
-			this.TokeniseWords(text);	// writes to wordsCache
-			wordArray = wordsCache;
-		}
-		else
-			wordArray = text;
-		var cur_line = "";
-		var prev_line;
-		var line_width;
-		var i;
-		var lineIndex = 0;
-		var line;
-		for (i = 0; i < wordArray.length; i++)
-		{
-			if (wordArray[i] === "\n")
-			{
-				if (lineIndex >= lines.length)
-					lines.push(allocLine());
-				line = lines[lineIndex];
-				line.text = cur_line;
-				line.width = ctx.measureText(cur_line).width;
-				lineIndex++;
-				cur_line = "";
-				continue;
-			}
-			prev_line = cur_line;
-			cur_line += wordArray[i];
-			line_width = ctx.measureText(cur_line).width;
-			if (line_width >= width)
-			{
-				if (lineIndex >= lines.length)
-					lines.push(allocLine());
-				line = lines[lineIndex];
-				line.text = prev_line;
-				line.width = ctx.measureText(prev_line).width;
-				lineIndex++;
-				cur_line = wordArray[i];
-				if (!wrapbyword && cur_line === " ")
-					cur_line = "";
-			}
-		}
-		if (cur_line.length)
-		{
-			if (lineIndex >= lines.length)
-				lines.push(allocLine());
-			line = lines[lineIndex];
-			line.text = cur_line;
-			line.width = ctx.measureText(cur_line).width;
-			lineIndex++;
-		}
-		for (i = lineIndex; i < lines.length; i++)
-			freeLine(lines[i]);
-		lines.length = lineIndex;
-	};
-	function Cnds() {};
-	Cnds.prototype.CompareText = function(text_to_compare, case_sensitive)
-	{
-		if (case_sensitive)
-			return this.text == text_to_compare;
-		else
-			return this.text.toLowerCase() == text_to_compare.toLowerCase();
-	};
-	pluginProto.cnds = new Cnds();
-	function Acts() {};
-	Acts.prototype.SetText = function(param)
-	{
-		if (cr.is_number(param) && param < 1e9)
-			param = Math.round(param * 1e10) / 1e10;	// round to nearest ten billionth - hides floating point errors
-		var text_to_set = param.toString();
-		if (this.text !== text_to_set)
-		{
-			this.text = text_to_set;
-			this.text_changed = true;
-			this.runtime.redraw = true;
-		}
-	};
-	Acts.prototype.AppendText = function(param)
-	{
-		if (cr.is_number(param))
-			param = Math.round(param * 1e10) / 1e10;	// round to nearest ten billionth - hides floating point errors
-		var text_to_append = param.toString();
-		if (text_to_append)	// not empty
-		{
-			this.text += text_to_append;
-			this.text_changed = true;
-			this.runtime.redraw = true;
-		}
-	};
-	Acts.prototype.SetFontFace = function (face_, style_)
-	{
-		var newstyle = "";
-		switch (style_) {
-		case 1: newstyle = "bold"; break;
-		case 2: newstyle = "italic"; break;
-		case 3: newstyle = "bold italic"; break;
-		}
-		if (face_ === this.facename && newstyle === this.fontstyle)
-			return;		// no change
-		this.facename = face_;
-		this.fontstyle = newstyle;
-		this.updateFont();
-	};
-	Acts.prototype.SetFontSize = function (size_)
-	{
-		if (this.ptSize === size_)
-			return;
-		this.ptSize = size_;
-		this.pxHeight = Math.ceil((this.ptSize / 72.0) * 96.0) + 4;	// assume 96dpi...
-		this.updateFont();
-	};
-	Acts.prototype.SetFontColor = function (rgb)
-	{
-		var newcolor = "rgb(" + cr.GetRValue(rgb).toString() + "," + cr.GetGValue(rgb).toString() + "," + cr.GetBValue(rgb).toString() + ")";
-		if (newcolor === this.color)
-			return;
-		this.color = newcolor;
-		this.need_text_redraw = true;
-		this.runtime.redraw = true;
-	};
-	Acts.prototype.SetWebFont = function (familyname_, cssurl_)
-	{
-		if (this.runtime.isDomFree)
-		{
-			cr.logexport("[Construct 2] Text plugin: 'Set web font' not supported on this platform - the action has been ignored");
-			return;		// DC todo
-		}
-		var self = this;
-		var refreshFunc = (function () {
-							self.runtime.redraw = true;
-							self.text_changed = true;
-						});
-		if (requestedWebFonts.hasOwnProperty(cssurl_))
-		{
-			var newfacename = "'" + familyname_ + "'";
-			if (this.facename === newfacename)
-				return;	// no change
-			this.facename = newfacename;
-			this.updateFont();
-			for (var i = 1; i < 10; i++)
-			{
-				setTimeout(refreshFunc, i * 100);
-				setTimeout(refreshFunc, i * 1000);
-			}
-			return;
-		}
-		var wf = document.createElement("link");
-		wf.href = cssurl_;
-		wf.rel = "stylesheet";
-		wf.type = "text/css";
-		wf.onload = refreshFunc;
-		document.getElementsByTagName('head')[0].appendChild(wf);
-		requestedWebFonts[cssurl_] = true;
-		this.facename = "'" + familyname_ + "'";
-		this.updateFont();
-		for (var i = 1; i < 10; i++)
-		{
-			setTimeout(refreshFunc, i * 100);
-			setTimeout(refreshFunc, i * 1000);
-		}
-;
-	};
-	Acts.prototype.SetEffect = function (effect)
-	{
-		this.compositeOp = cr.effectToCompositeOp(effect);
-		cr.setGLBlend(this, effect, this.runtime.gl);
-		this.runtime.redraw = true;
-	};
-	pluginProto.acts = new Acts();
-	function Exps() {};
-	Exps.prototype.Text = function(ret)
-	{
-		ret.set_string(this.text);
-	};
-	Exps.prototype.FaceName = function (ret)
-	{
-		ret.set_string(this.facename);
-	};
-	Exps.prototype.FaceSize = function (ret)
-	{
-		ret.set_int(this.ptSize);
-	};
-	Exps.prototype.TextWidth = function (ret)
-	{
-		var w = 0;
-		var i, len, x;
-		for (i = 0, len = this.lines.length; i < len; i++)
-		{
-			x = this.lines[i].width;
-			if (w < x)
-				w = x;
-		}
-		ret.set_int(w);
-	};
-	Exps.prototype.TextHeight = function (ret)
-	{
-		ret.set_int(this.lines.length * this.pxHeight);
-	};
-	pluginProto.exps = new Exps();
-}());
-;
-;
 cr.plugins_.rex_TouchWrap = function(runtime)
 {
 	this.runtime = runtime;
@@ -14044,18 +13424,6 @@ cr.getProjectModel = function() { return [
 		true,
 		false
 	]
-,	[
-		cr.plugins_.Text,
-		false,
-		true,
-		true,
-		true,
-		true,
-		true,
-		true,
-		true,
-		false
-	]
 	],
 	[
 	[
@@ -14063,7 +13431,7 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		1,
+		0,
 		0,
 		null,
 		[
@@ -14074,22 +13442,17 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			4584683395233586,
+			4829707802146887,
 			[
-				["images/bgh-sheet0.png", 205653, 0, 0, 480, 360, 1, 0.5, 0.502778,[],[],0]
+				["images/sprite-sheet0.png", 128740, 0, 0, 480, 360, 1, 0.5, 0.5,[],[],0]
 			]
 			]
 		],
 		[
-		[
-			"AnchorMod",
-			cr.behaviors.rex_Anchor_mod,
-			9590864145917828
-		]
 		],
 		false,
 		false,
-		2167363981155344,
+		2663773105803329,
 		[]
 	]
 ,	[
@@ -14097,194 +13460,55 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		1,
+		3,
 		0,
 		null,
 		[
 			[
-			"ic_1",
-			0,
-			true,
-			0,
-			0,
-			false,
-			3252181270686004,
-			[
-				["images/icons-sheet0.png", 47578, 1, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 57, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 113, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 169, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 1, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_2",
-			0,
-			true,
-			0,
-			1,
-			false,
-			7150010484573809,
-			[
-				["images/icons-sheet0.png", 47578, 57, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 113, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 169, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 1, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 57, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_3",
-			0,
+			"s0",
+			5,
 			false,
 			1,
 			0,
 			false,
-			1477094392712383,
+			9893404638530732,
 			[
-				["images/icons-sheet0.png", 47578, 113, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0]
+				["images/sprite5-sheet0.png", 1337, 0, 0, 43, 51, 1, 0.511628, 0.509804,[],[-0.488372,-0.490196,-0.023256,-0.509804,0.27907,-0.333333,0.488372,-0.019608,0.27907,0.313725,-0.023256,0.490196,-0.488372,0.470588,-0.511628,-0.019608],0]
 			]
 			]
 ,			[
-			"ic_4",
-			0,
+			"s1",
+			5,
 			false,
 			1,
 			0,
 			false,
-			1637793250778992,
+			2067208094195627,
 			[
-				["images/icons-sheet0.png", 47578, 169, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_5",
-			0,
-			true,
-			1,
-			0,
-			false,
-			1311161294670107,
-			[
-				["images/icons-sheet0.png", 47578, 1, 169, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 57, 169, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 113, 169, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet0.png", 47578, 169, 169, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet1.png", 51732, 1, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet1.png", 51732, 57, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_6",
-			0,
-			false,
-			1,
-			0,
-			false,
-			822510290424173,
-			[
-				["images/icons-sheet1.png", 51732, 113, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_7",
-			0,
-			false,
-			1,
-			0,
-			false,
-			3877363740478028,
-			[
-				["images/icons-sheet1.png", 51732, 169, 1, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_8",
-			0,
-			false,
-			1,
-			0,
-			false,
-			5698432037573983,
-			[
-				["images/icons-sheet1.png", 51732, 1, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_9",
-			0,
-			false,
-			1,
-			0,
-			false,
-			8879658338834166,
-			[
-				["images/icons-sheet1.png", 51732, 57, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_10",
-			0,
-			false,
-			1,
-			0,
-			false,
-			8511752589001669,
-			[
-				["images/icons-sheet1.png", 51732, 113, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_11",
-			0,
-			false,
-			1,
-			0,
-			false,
-			2014148586778821,
-			[
-				["images/icons-sheet1.png", 51732, 169, 57, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_12",
-			0,
-			false,
-			1,
-			0,
-			false,
-			6381057526654123,
-			[
-				["images/icons-sheet1.png", 51732, 1, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0]
-			]
-			]
-,			[
-			"ic_13",
-			0,
-			true,
-			0,
-			0,
-			false,
-			5992601018958998,
-			[
-				["images/icons-sheet1.png", 51732, 57, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet1.png", 51732, 113, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet1.png", 51732, 169, 113, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet1.png", 51732, 1, 169, 55, 55, 1, 0.509091, 0.509091,[],[],0],
-				["images/icons-sheet1.png", 51732, 57, 169, 55, 55, 1, 0.509091, 0.509091,[],[],0]
+				["images/sprite5-sheet1.png", 1296, 0, 0, 43, 51, 1, 0.511628, 0.509804,[],[-0.488372,-0.490196,-0.023256,-0.509804,0.27907,-0.333333,0.488372,-0.019608,0.27907,0.313725,-0.023256,0.490196,-0.488372,0.470588,-0.511628,-0.019608],0]
 			]
 			]
 		],
 		[
 		[
+			"Button",
+			cr.behaviors.Rex_Button2,
+			6805663705650285
+		]
+,		[
 			"Pin",
 			cr.behaviors.Pin,
-			6982902407195649
+			1861641897364233
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			4923342187902184
 		]
 		],
 		false,
 		false,
-		8975129299668988,
+		7908651329864258,
 		[]
 	]
 ,	[
@@ -14292,129 +13516,55 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		1,
+		3,
 		0,
 		null,
 		[
 			[
-			"b1",
+			"s0",
 			5,
 			false,
 			1,
 			0,
 			false,
-			8688808629500558,
+			8478822335869609,
 			[
-				["images/borders-sheet0.png", 2073, 1, 1, 95, 95, 1, 0.505263, 0.505263,[],[],0]
+				["images/sprite6-sheet0.png", 1287, 0, 0, 43, 51, 1, 0.488372, 0.490196,[],[0.488372,0.490196,0.023256,0.509804,-0.27907,0.333333,-0.488372,0.019608,-0.27907,-0.313725,0.023256,-0.490196,0.488372,-0.470588,0.511628,0.019608],0]
 			]
 			]
 ,			[
-			"b2",
+			"s1",
 			5,
 			false,
 			1,
 			0,
 			false,
-			5527768932893728,
+			6553480439613748,
 			[
-				["images/borders-sheet0.png", 2073, 97, 1, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b3",
-			5,
-			false,
-			1,
-			0,
-			false,
-			454898392282102,
-			[
-				["images/borders-sheet0.png", 2073, 1, 97, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b4",
-			5,
-			false,
-			1,
-			0,
-			false,
-			7368996992885682,
-			[
-				["images/borders-sheet0.png", 2073, 97, 97, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b5",
-			5,
-			false,
-			1,
-			0,
-			false,
-			3959255500831266,
-			[
-				["images/borders-sheet1.png", 2240, 1, 1, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b6",
-			5,
-			false,
-			1,
-			0,
-			false,
-			7555766736903179,
-			[
-				["images/borders-sheet1.png", 2240, 97, 1, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b7",
-			5,
-			false,
-			1,
-			0,
-			false,
-			4407612361936532,
-			[
-				["images/borders-sheet1.png", 2240, 1, 97, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b8",
-			5,
-			false,
-			1,
-			0,
-			false,
-			648781893984508,
-			[
-				["images/borders-sheet1.png", 2240, 97, 97, 95, 95, 1, 0.505263, 0.505263,[],[],0]
-			]
-			]
-,			[
-			"b9",
-			5,
-			false,
-			1,
-			0,
-			false,
-			5424976085028967,
-			[
-				["images/borders-sheet2.png", 478, 0, 0, 95, 95, 1, 0.505263, 0.505263,[],[],0]
+				["images/sprite6-sheet1.png", 1258, 0, 0, 43, 51, 1, 0.488372, 0.490196,[],[0.488372,0.490196,0.023256,0.509804,-0.27907,0.333333,-0.488372,0.019608,-0.27907,-0.313725,0.023256,-0.490196,0.488372,-0.470588,0.511628,0.019608],0]
 			]
 			]
 		],
 		[
 		[
+			"Button",
+			cr.behaviors.Rex_Button2,
+			3201771803894837
+		]
+,		[
 			"Pin",
 			cr.behaviors.Pin,
-			3645557309025349
+			6064117005481005
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			1096564378678641
 		]
 		],
 		false,
 		false,
-		6173909160523888,
+		1693481748742123,
 		[]
 	]
 ,	[
@@ -14422,22 +13572,56 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		1,
+		2,
 		0,
 		null,
 		[
 			[
-			"Default",
-			12,
-			true,
+			"c0",
+			0,
+			false,
+			0,
+			0,
+			false,
+			9885126365756266,
+			[
+				["images/sprite7-sheet0.png", 6783, 1, 1, 48, 48, 1, 0.5, 0.5,[],[-0.354167,-0.354167,0,-0.5,0.354167,-0.354167,0.5,0,0.354167,0.354167,0,0.5,-0.354167,0.354167,-0.5,0],0]
+			]
+			]
+,			[
+			"c1",
+			5,
+			false,
 			1,
 			0,
 			false,
-			4792026714637839,
+			1203066540795232,
 			[
-				["images/wheel-sheet0.png", 35364, 1, 1, 55, 171, 1, 0.509091, 0.502924,[],[],0],
-				["images/wheel-sheet0.png", 35364, 57, 1, 55, 171, 1, 0.509091, 0.502924,[],[],0],
-				["images/wheel-sheet0.png", 35364, 113, 1, 55, 171, 1, 0.509091, 0.502924,[],[],0]
+				["images/sprite7-sheet0.png", 6783, 50, 1, 48, 48, 1, 0.5, 0.5,[],[-0.354167,-0.354167,0,-0.5,0.354167,-0.354167,0.5,0,0.354167,0.354167,0,0.5,-0.354167,0.354167,-0.5,0],0]
+			]
+			]
+,			[
+			"c2",
+			5,
+			false,
+			1,
+			0,
+			false,
+			43227017826461,
+			[
+				["images/sprite7-sheet0.png", 6783, 1, 50, 48, 48, 1, 0.5, 0.5,[],[-0.354167,-0.354167,0,-0.5,0.354167,-0.354167,0.5,0,0.354167,0.354167,0,0.5,-0.354167,0.354167,-0.5,0],0]
+			]
+			]
+,			[
+			"c3",
+			5,
+			false,
+			1,
+			0,
+			false,
+			1828005209408118,
+			[
+				["images/sprite7-sheet0.png", 6783, 50, 50, 48, 48, 1, 0.5, 0.5,[],[-0.354167,-0.354167,0,-0.5,0.354167,-0.354167,0.5,0,0.354167,0.354167,0,0.5,-0.354167,0.354167,-0.5,0],0]
 			]
 			]
 		],
@@ -14445,12 +13629,17 @@ cr.getProjectModel = function() { return [
 		[
 			"Pin",
 			cr.behaviors.Pin,
-			2825312387259843
+			9886175050885709
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			2378933697243443
 		]
 		],
 		false,
 		false,
-		2979874642744067,
+		5681449182483885,
 		[]
 	]
 ,	[
@@ -14458,33 +13647,55 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		1,
+		3,
 		0,
 		null,
 		[
 			[
-			"b",
+			"s0",
 			5,
 			false,
 			1,
 			0,
 			false,
-			3758857413339849,
+			4981823740904743,
 			[
-				["images/borders2-sheet0.png", 497, 0, 0, 95, 95, 1, 0.505263, 0.505263,[],[],0]
+				["images/b_lob-sheet0.png", 14013, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
+			]
+			]
+,			[
+			"s1",
+			5,
+			false,
+			1,
+			0,
+			false,
+			280337502870819,
+			[
+				["images/b_lob-sheet1.png", 10495, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 		],
 		[
 		[
+			"Button",
+			cr.behaviors.Rex_Button2,
+			8778625343011147
+		]
+,		[
 			"Pin",
 			cr.behaviors.Pin,
-			8551177019176682
+			4638574486864495
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			9856584506453913
 		]
 		],
 		false,
 		false,
-		542338606809706,
+		682180540135267,
 		[]
 	]
 ,	[
@@ -14492,7 +13703,7 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		2,
+		3,
 		0,
 		null,
 		[
@@ -14503,9 +13714,9 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			353431065277459,
+			42725424015319,
 			[
-				["images/spinb2-sheet0.png", 2529, 0, 0, 103, 68, 1, 0.504854, 0.5,[],[-0.475728,-0.455882,-0.00970802,-0.5,0.46602,-0.455882,0.495146,0,0.46602,0.455882,-0.00970802,0.5,-0.475728,0.455882,-0.504854,0],0]
+				["images/b_deal-sheet0.png", 14050, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 ,			[
@@ -14515,39 +13726,32 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			6326395195536197,
+			6498546663590283,
 			[
-				["images/spinb2-sheet1.png", 1752, 0, 0, 103, 68, 1, 0.504854, 0.5,[],[-0.475728,-0.455882,-0.00970802,-0.5,0.46602,-0.455882,0.495146,0,0.46602,0.455882,-0.00970802,0.5,-0.475728,0.455882,-0.504854,0],0]
-			]
-			]
-,			[
-			"s2",
-			5,
-			false,
-			1,
-			0,
-			false,
-			6683821561691618,
-			[
-				["images/spinb2-sheet2.png", 1752, 0, 0, 103, 68, 1, 0.504854, 0.5,[],[-0.475728,-0.455882,-0.00970802,-0.5,0.46602,-0.455882,0.495146,0,0.46602,0.455882,-0.00970802,0.5,-0.475728,0.455882,-0.504854,0],0]
+				["images/b_deal-sheet1.png", 10337, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 		],
 		[
 		[
-			"Pin",
-			cr.behaviors.Pin,
-			1952336845647703
-		]
-,		[
 			"Button",
 			cr.behaviors.Rex_Button2,
-			8208960509904863
+			8408413583645546
+		]
+,		[
+			"Pin",
+			cr.behaviors.Pin,
+			1182663969875157
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			5820294416947204
 		]
 		],
 		false,
 		false,
-		8043725101693921,
+		9536238765179438,
 		[]
 	]
 ,	[
@@ -14555,7 +13759,7 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		2,
+		3,
 		0,
 		null,
 		[
@@ -14566,9 +13770,9 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			7943209950860694,
+			5741318344806746,
 			[
-				["images/but4-sheet0.png", 4031, 1, 1, 103, 39, 1, 0.504854, 0.512821,[],[-0.495145,-0.48718,-0.00970802,-0.512821,0.485437,-0.48718,0.485437,0.461538,-0.00970802,0.487179,-0.495145,0.461538],0]
+				["images/b_hit-sheet0.png", 13966, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 ,			[
@@ -14578,39 +13782,32 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			6930519169376729,
+			1664844452416241,
 			[
-				["images/but4-sheet0.png", 4031, 1, 41, 103, 39, 1, 0.504854, 0.512821,[],[-0.495145,-0.48718,-0.00970802,-0.512821,0.485437,-0.48718,0.485437,0.461538,-0.00970802,0.487179,-0.495145,0.461538],0]
-			]
-			]
-,			[
-			"s2",
-			5,
-			false,
-			1,
-			0,
-			false,
-			9333038059283351,
-			[
-				["images/but4-sheet0.png", 4031, 1, 81, 103, 39, 1, 0.504854, 0.512821,[],[-0.495145,-0.48718,-0.00970802,-0.512821,0.485437,-0.48718,0.485437,0.461538,-0.00970802,0.487179,-0.495145,0.461538],0]
+				["images/b_hit-sheet1.png", 10164, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 		],
 		[
 		[
-			"Pin",
-			cr.behaviors.Pin,
-			4811160601187643
-		]
-,		[
 			"Button",
 			cr.behaviors.Rex_Button2,
-			1548240454024888
+			3099199254488898
+		]
+,		[
+			"Pin",
+			cr.behaviors.Pin,
+			7866641913926647
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			112694268591759
 		]
 		],
 		false,
 		false,
-		8765021693891548,
+		9475071650828873,
 		[]
 	]
 ,	[
@@ -14618,7 +13815,7 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		2,
+		3,
 		0,
 		null,
 		[
@@ -14629,9 +13826,9 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			353830257802262,
+			6220954802292578,
 			[
-				["images/cbp2-sheet0.png", 1805, 0, 0, 40, 48, 1, 0.5, 0.5,[],[-0.475,-0.479167,0,-0.416667,0.225,-0.270833,0.5,0,0.225,0.270833,0,0.416667,-0.475,0.479167,-0.5,0],0]
+				["images/b_stand-sheet0.png", 14095, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 ,			[
@@ -14641,39 +13838,32 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			3654535935849946,
+			6500481495354794,
 			[
-				["images/cbp2-sheet1.png", 1165, 0, 0, 40, 48, 1, 0.5, 0.5,[],[-0.475,-0.479167,0,-0.416667,0.225,-0.270833,0.5,0,0.225,0.270833,0,0.416667,-0.475,0.479167,-0.5,0],0]
-			]
-			]
-,			[
-			"s2",
-			5,
-			false,
-			1,
-			0,
-			false,
-			5610293927160531,
-			[
-				["images/cbp2-sheet2.png", 1923, 0, 0, 40, 48, 1, 0.5, 0.5,[],[-0.475,-0.479167,0,-0.416667,0.225,-0.270833,0.5,0,0.225,0.270833,0,0.416667,-0.475,0.479167,-0.5,0],0]
+				["images/b_stand-sheet1.png", 10556, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 		],
 		[
 		[
-			"Pin",
-			cr.behaviors.Pin,
-			199378434492501
-		]
-,		[
 			"Button",
 			cr.behaviors.Rex_Button2,
-			4045884085266372
+			5585604384598482
+		]
+,		[
+			"Pin",
+			cr.behaviors.Pin,
+			276377324781685
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			3073741320407799
 		]
 		],
 		false,
 		false,
-		6674552485032972,
+		6115335483476994,
 		[]
 	]
 ,	[
@@ -14681,7 +13871,7 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		2,
+		3,
 		0,
 		null,
 		[
@@ -14692,9 +13882,9 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			2530313753476319,
+			8813859205829563,
 			[
-				["images/cbm2-sheet0.png", 1764, 0, 0, 40, 48, 1, 0.5, 0.5,[],[-0.225,-0.270833,0,-0.4375,0.475,-0.479167,0.5,0,0.475,0.479167,0,0.4375,-0.225,0.270833,-0.5,0],0]
+				["images/b_dbl-sheet0.png", 10495, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 ,			[
@@ -14704,21 +13894,9 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			8002514910938803,
+			6941809150553852,
 			[
-				["images/cbm2-sheet1.png", 1191, 0, 0, 40, 48, 1, 0.5, 0.5,[],[-0.225,-0.270833,0,-0.4375,0.475,-0.479167,0.5,0,0.475,0.479167,0,0.4375,-0.225,0.270833,-0.5,0],0]
-			]
-			]
-,			[
-			"s2",
-			5,
-			false,
-			1,
-			0,
-			false,
-			6236879653984735,
-			[
-				["images/cbm2-sheet2.png", 1931, 0, 0, 40, 48, 1, 0.5, 0.5,[],[-0.225,-0.270833,0,-0.4375,0.475,-0.479167,0.5,0,0.475,0.479167,0,0.4375,-0.225,0.270833,-0.5,0],0]
+				["images/b_dbl-sheet1.png", 10427, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 		],
@@ -14726,17 +13904,22 @@ cr.getProjectModel = function() { return [
 		[
 			"Pin",
 			cr.behaviors.Pin,
-			6316801536344397
+			6755868159685978
 		]
 ,		[
 			"Button",
 			cr.behaviors.Rex_Button2,
-			6276186820234053
+			6740711686417144
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			8349610495631146
 		]
 		],
 		false,
 		false,
-		7689103552331725,
+		3559227971952331,
 		[]
 	]
 ,	[
@@ -14744,7 +13927,7 @@ cr.getProjectModel = function() { return [
 		cr.plugins_.Sprite,
 		false,
 		[],
-		2,
+		3,
 		0,
 		null,
 		[
@@ -14755,9 +13938,9 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			1157905391661464,
+			5120021392783652,
 			[
-				["images/but2-sheet0.png", 4031, 1, 1, 103, 39, 1, 0.504854, 0.512821,[],[-0.495145,-0.48718,-0.00970802,-0.512821,0.485437,-0.48718,0.485437,0.461538,-0.00970802,0.487179,-0.495145,0.461538],0]
+				["images/b_split-sheet0.png", 10342, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 ,			[
@@ -14767,77 +13950,36 @@ cr.getProjectModel = function() { return [
 			1,
 			0,
 			false,
-			5747570533856374,
+			7444742175707027,
 			[
-				["images/but2-sheet0.png", 4031, 1, 41, 103, 39, 1, 0.504854, 0.512821,[],[-0.495145,-0.48718,-0.00970802,-0.512821,0.485437,-0.48718,0.485437,0.461538,-0.00970802,0.487179,-0.495145,0.461538],0]
-			]
-			]
-,			[
-			"s2",
-			5,
-			false,
-			1,
-			0,
-			false,
-			2827216558605051,
-			[
-				["images/but2-sheet0.png", 4031, 1, 81, 103, 39, 1, 0.504854, 0.512821,[],[-0.495145,-0.48718,-0.00970802,-0.512821,0.485437,-0.48718,0.485437,0.461538,-0.00970802,0.487179,-0.495145,0.461538],0]
+				["images/b_split-sheet1.png", 10314, 0, 0, 90, 90, 1, 0.511111, 0.511111,[],[-0.366667,-0.366667,-0.011111,-0.511111,0.344445,-0.366667,0.488889,-0.011111,0.344445,0.344445,-0.011111,0.488889,-0.366667,0.344445,-0.511111,-0.011111],0]
 			]
 			]
 		],
 		[
 		[
-			"Pin",
-			cr.behaviors.Pin,
-			7969543593504884
-		]
-,		[
 			"Button",
 			cr.behaviors.Rex_Button2,
-			4044774719151518
+			3749437080683344
+		]
+,		[
+			"Pin",
+			cr.behaviors.Pin,
+			2313491174399998
+		]
+,		[
+			"AnchorMod",
+			cr.behaviors.rex_Anchor_mod,
+			1140099602735233
 		]
 		],
 		false,
 		false,
-		4958982332482967,
+		9361624529648748,
 		[]
 	]
 ,	[
 		"t10",
-		cr.plugins_.Sprite,
-		false,
-		[],
-		1,
-		0,
-		null,
-		[
-			[
-			"Default",
-			5,
-			false,
-			1,
-			0,
-			false,
-			7360957305415621,
-			[
-				["images/sprite13-sheet0.png", 5548, 0, 0, 314, 183, 1, 0.5, 0.502732,[],[-0.480892,-0.469945,0.480892,-0.469945,0.5,-0.00546399,0.480892,0.464481,-0.480892,0.464481,-0.5,-0.00546399],0]
-			]
-			]
-		],
-		[
-		[
-			"Pin",
-			cr.behaviors.Pin,
-			3585721599757402
-		]
-		],
-		false,
-		false,
-		9379554212862279,
-		[]
-	]
-,	[
-		"t11",
 		cr.plugins_.rex_TouchWrap,
 		false,
 		[],
@@ -14849,25 +13991,9 @@ cr.getProjectModel = function() { return [
 		],
 		false,
 		false,
-		3119348835891493,
+		1979157234962745,
 		[]
 		,[1]
-	]
-,	[
-		"t12",
-		cr.plugins_.Text,
-		false,
-		[],
-		0,
-		0,
-		null,
-		null,
-		[
-		],
-		false,
-		false,
-		9685210778632219,
-		[]
 	]
 	],
 	[
@@ -14877,14 +14003,14 @@ cr.getProjectModel = function() { return [
 		"Layout 1",
 		480,
 		360,
-		true,
+		false,
 		"Event sheet 1",
-		3149246070261378,
+		9404153577245673,
 		[
 		[
 			"Layer 0",
 			0,
-			7284426627139702,
+			273332297872342,
 			true,
 			[255, 255, 255],
 			false,
@@ -14897,36 +14023,12 @@ cr.getProjectModel = function() { return [
 			0,
 			[
 			[
-				[171, 208, 0, 314, 183, 0, 0, 1, 0.5, 0.502732, 0, 0, []],
-				10,
-				10,
-				[
-				],
-				[
-				[
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[240, 181, 0, 480, 362, 0, 0, 1, 0.5, 0.502778, 0, 0, []],
+				[240, 180, 0, 480, 360, 0, 0, 1, 0.5, 0.5, 0, 0, []],
 				0,
 				0,
 				[
 				],
 				[
-				[
-					0,
-					0,
-					1,
-					1,
-					1
-				]
 				],
 				[
 					0,
@@ -14936,213 +14038,25 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[108.04, 169.989, 0, 200, 30, 0, 0, 1, 0, 0, 0, 0, []],
-				12,
-				12,
-				[
-				],
-				[
-				],
-				[
-					"Text",
-					0,
-					"12pt Arial",
-					"rgb(0,128,39)",
-					0,
-					0,
-					0,
-					0,
-					0
-				]
-			]
-			],
-			[			]
-		]
-,		[
-			"Layer 1",
-			1,
-			1017190531092309,
-			true,
-			[255, 255, 255],
-			true,
-			1,
-			1,
-			1,
-			false,
-			1,
-			0,
-			0,
-			[
-			[
-				[402, 292, 0, 103, 95, 0, 0, 1, 0.504854, 0.5, 0, 0, []],
-				5,
-				5,
-				[
-				],
-				[
-				[
-				],
-				[
-					1,
-					0,
-					1
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[444, 93, 0, 40, 48, 0, 0, 1, 0.5, 0.5, 0, 0, []],
-				7,
-				6,
-				[
-				],
-				[
-				[
-				],
-				[
-					1,
-					0,
-					1
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[359, 93, 0, 40, 48, 0, 0, 1, 0.5, 0.5, 0, 0, []],
-				8,
-				7,
-				[
-				],
-				[
-				[
-				],
-				[
-					1,
-					0,
-					1
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[402, 211, 0, 103, 50, 0, 0, 1, 0.504854, 0.512821, 0, 0, []],
-				6,
-				8,
-				[
-				],
-				[
-				[
-				],
-				[
-					1,
-					0,
-					1
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[402, 155, 0, 103, 50, 0, 0, 1, 0.504854, 0.512821, 0, 0, []],
-				9,
-				9,
-				[
-				],
-				[
-				[
-				],
-				[
-					1,
-					0,
-					1
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-,			[
-				[-59, 202, 0, 55, 55, 0, 0, 1, 0.509091, 0.509091, 0, 0, []],
+				[131, 320, 0, 43, 51, 0, 0, 1, 0.511628, 0.509804, 0, 0, []],
 				1,
-				3,
-				[
-				],
-				[
-				[
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					1
-				]
-			]
-			],
-			[			]
-		]
-,		[
-			"Layer 2",
-			2,
-			8975591982479072,
-			true,
-			[255, 255, 255],
-			true,
-			1,
-			1,
-			1,
-			false,
-			1,
-			0,
-			0,
-			[
-			[
-				[-58, 84, 0, 55, 171, 0, 0, 1, 0.509091, 0.502924, 0, 0, []],
-				3,
-				2,
-				[
-				],
-				[
-				[
-				]
-				],
-				[
-					0,
-					"Default",
-					0,
-					0
-				]
-			]
-,			[
-				[-60, -35, 0, 55, 55, 0, 0, 1, 0.505263, 0.505263, 0, 0, []],
-				2,
 				1,
 				[
 				],
 				[
 				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
 				]
 				],
 				[
@@ -15153,13 +14067,78 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[-2, -35, 0, 56, 56, 0, 0, 1, 0.505263, 0.505263, 0, 0, []],
+				[29, 320, 0, 43, 51, 0, 0, 1, 0.488372, 0.490196, 0, 0, []],
+				2,
+				2,
+				[
+				],
+				[
+				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
+,			[
+				[79, 320, 0, 48, 48, 0, 0, 1, 0.5, 0.5, 0, 0, []],
+				3,
+				3,
+				[
+				],
+				[
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
+,			[
+				[447, 320, 0, 65, 65, 0, 0, 1, 0.511111, 0.511111, 0, 0, []],
 				4,
 				4,
 				[
 				],
 				[
 				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
 				]
 				],
 				[
@@ -15169,24 +14148,151 @@ cr.getProjectModel = function() { return [
 					1
 				]
 			]
-			],
-			[			]
-		]
-,		[
-			"Layer 3",
-			3,
-			556186783574309,
-			true,
-			[255, 255, 255],
-			true,
-			1,
-			1,
-			1,
-			false,
-			1,
-			0,
-			0,
-			[
+,			[
+				[191, 321, 0, 65, 65, 0, 0, 1, 0.511111, 0.511111, 0, 0, []],
+				5,
+				5,
+				[
+				],
+				[
+				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
+,			[
+				[258, 323, 0, 65, 65, 0, 0, 1, 0.511111, 0.511111, 0, 0, []],
+				6,
+				6,
+				[
+				],
+				[
+				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
+,			[
+				[191, 322, 0, 65, 65, 0, 0, 1, 0.511111, 0.511111, 0, 0, []],
+				7,
+				7,
+				[
+				],
+				[
+				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
+,			[
+				[326, 320, 0, 65, 65, 0, 0, 1, 0.511111, 0.511111, 0, 0, []],
+				8,
+				8,
+				[
+				],
+				[
+				[
+				],
+				[
+					1,
+					0,
+					1
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
+,			[
+				[393, 320, 0, 65, 65, 0, 0, 1, 0.511111, 0.511111, 0, 0, []],
+				9,
+				9,
+				[
+				],
+				[
+				[
+					1,
+					0,
+					1
+				],
+				[
+				],
+				[
+					0,
+					1,
+					0,
+					0,
+					0
+				]
+				],
+				[
+					0,
+					"Default",
+					0,
+					1
+				]
+			]
 			],
 			[			]
 		]
@@ -15204,7 +14310,7 @@ cr.getProjectModel = function() { return [
 			0,
 			null,
 			false,
-			2420921374518438,
+			7608481585021028,
 			[
 			[
 				-1,
@@ -15214,7 +14320,7 @@ cr.getProjectModel = function() { return [
 				false,
 				false,
 				false,
-				747492250359356
+				1248172900469495
 			]
 			],
 			[
@@ -15222,7 +14328,7 @@ cr.getProjectModel = function() { return [
 				-1,
 				cr.system_object.prototype.acts.SetCanvasSize,
 				null,
-				3997366212330973
+				9737010185402247
 				,[
 				[
 					0,
@@ -15244,89 +14350,13 @@ cr.getProjectModel = function() { return [
 				-1,
 				cr.system_object.prototype.acts.ScrollY,
 				null,
-				3746072001505625
+				1449138817072107
 				,[
 				[
 					0,
 					[
 						0,
 						360
-					]
-				]
-				]
-			]
-,			[
-				12,
-				cr.plugins_.Text.prototype.acts.SetText,
-				null,
-				8409730649205722
-				,[
-				[
-					7,
-					[
-						10,
-						[
-							10,
-							[
-								20,
-								0,
-								cr.plugins_.Sprite.prototype.exps.X,
-								false,
-								null
-							]
-							,[
-								2,
-								"x"
-							]
-						]
-						,[
-							20,
-							0,
-							cr.plugins_.Sprite.prototype.exps.Y,
-							false,
-							null
-						]
-					]
-				]
-				]
-			]
-,			[
-				0,
-				cr.plugins_.Sprite.prototype.acts.SetY,
-				null,
-				1024286332926215
-				,[
-				[
-					0,
-					[
-						7,
-						[
-							4,
-							[
-								19,
-								cr.system_object.prototype.exps.viewporttop
-								,[
-[
-									0,
-									0
-								]
-								]
-							]
-							,[
-								19,
-								cr.system_object.prototype.exps.viewportbottom
-								,[
-[
-									0,
-									0
-								]
-								]
-							]
-						]
-						,[
-							0,
-							2
-						]
 					]
 				]
 				]
@@ -15344,12 +14374,12 @@ cr.getProjectModel = function() { return [
 	true,
 	true,
 	true,
-	"1.1.3.1",
+	"1.4.2.0",
 	1,
 	false,
 	0,
 	false,
-	13,
+	11,
 	false,
 	[
 	]

@@ -1,8 +1,8 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.powers.mobile" version="1.1.4.1">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.powers.mobile" version="1.4.2.0">
 
-	<name>sss</name>
-	<description>slot</description>
+	<name>bj</name>
+	<description>Black Jack</description>
 	<author>S. Korenko</author>
 
 	<gap:platforms>
