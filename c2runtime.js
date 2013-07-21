@@ -10485,6 +10485,500 @@ cr.do_cmp = function (x, cmp, y)
 cr.shaders = {};
 ;
 ;
+cr.plugins_.Browser = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Browser.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+		var self = this;
+		window.addEventListener("resize", function () {
+			self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnResize, self);
+		});
+		if (typeof navigator.onLine !== "undefined")
+		{
+			window.addEventListener("online", function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnOnline, self);
+			});
+			window.addEventListener("offline", function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnOffline, self);
+			});
+		}
+		if (typeof window.applicationCache !== "undefined")
+		{
+			window.applicationCache.addEventListener('updateready', function() {
+				self.runtime.loadingprogress = 1;
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnUpdateReady, self);
+			});
+			window.applicationCache.addEventListener('progress', function(e) {
+				self.runtime.loadingprogress = e["loaded"] / e["total"];
+			});
+		}
+		if (!this.runtime.isDirectCanvas)
+		{
+			document.addEventListener("appMobi.device.update.available", function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnUpdateReady, self);
+			});
+			document.addEventListener("menubutton", function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnMenuButton, self);
+			});
+			document.addEventListener("searchbutton", function() {
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnSearchButton, self);
+			});
+		}
+		this.runtime.addSuspendCallback(function(s) {
+			if (s)
+			{
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnPageHidden, self);
+			}
+			else
+			{
+				self.runtime.trigger(cr.plugins_.Browser.prototype.cnds.OnPageVisible, self);
+			}
+		});
+		this.is_arcade = (typeof window["is_scirra_arcade"] !== "undefined");
+		this.fullscreenOldMarginCss = "";
+	};
+	function Cnds() {};
+	Cnds.prototype.CookiesEnabled = function()
+	{
+		return navigator ? navigator.cookieEnabled : false;
+	};
+	Cnds.prototype.IsOnline = function()
+	{
+		return navigator ? navigator.onLine : false;
+	};
+	Cnds.prototype.HasJava = function()
+	{
+		return navigator ? navigator.javaEnabled() : false;
+	};
+	Cnds.prototype.OnOnline = function()
+	{
+		return true;
+	};
+	Cnds.prototype.OnOffline = function()
+	{
+		return true;
+	};
+	Cnds.prototype.IsDownloadingUpdate = function ()
+	{
+		if (typeof window["applicationCache"] === "undefined")
+			return false;
+		else
+			return window["applicationCache"]["status"] === window["applicationCache"]["DOWNLOADING"];
+	};
+	Cnds.prototype.OnUpdateReady = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.PageVisible = function ()
+	{
+		return !this.runtime.isSuspended;
+	};
+	Cnds.prototype.OnPageVisible = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.OnPageHidden = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.OnResize = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.IsFullscreen = function ()
+	{
+		return !!(document["mozFullScreen"] || document["webkitIsFullScreen"] || document["fullScreen"] || this.runtime.isNodeFullscreen);
+	};
+	Cnds.prototype.OnMenuButton = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.OnSearchButton = function ()
+	{
+		return true;
+	};
+	Cnds.prototype.IsMetered = function ()
+	{
+		var connection = navigator["connection"] || navigator["mozConnection"] || navigator["webkitConnection"];
+		if (!connection)
+			return false;
+		return connection["metered"];
+	};
+	Cnds.prototype.IsCharging = function ()
+	{
+		var battery = navigator["battery"] || navigator["mozBattery"] || navigator["webkitBattery"];
+		if (!battery)
+			return true;
+		return battery["charging"];
+	};
+	pluginProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.Alert = function (msg)
+	{
+		if (!this.runtime.isDomFree)
+			alert(msg.toString());
+	};
+	Acts.prototype.Close = function ()
+	{
+		if (this.runtime.isCocoonJs)
+			CocoonJS["App"]["forceToFinish"]();
+		else if (this.runtime.isNodeWebkit)
+			window["nwgui"]["App"]["quit"]();
+		else if (!this.is_arcade && !this.runtime.isDomFree)
+			window.close();
+	};
+	Acts.prototype.Focus = function ()
+	{
+		if (this.runtime.isNodeWebkit)
+		{
+			var win = window["nwgui"]["Window"]["get"]();
+			win["focus"]();
+		}
+		else if (!this.is_arcade && !this.runtime.isDomFree)
+			window.focus();
+	};
+	Acts.prototype.Blur = function ()
+	{
+		if (this.runtime.isNodeWebkit)
+		{
+			var win = window["nwgui"]["Window"]["get"]();
+			win["blur"]();
+		}
+		else if (!this.is_arcade && !this.runtime.isDomFree)
+			window.blur();
+	};
+	Acts.prototype.GoBack = function ()
+	{
+		if (!this.is_arcade && !this.runtime.isDomFree)
+			window.back();
+	};
+	Acts.prototype.GoForward = function ()
+	{
+		if (!this.is_arcade && !this.runtime.isDomFree)
+			window.forward();
+	};
+	Acts.prototype.GoHome = function ()
+	{
+		if (!this.is_arcade && !this.runtime.isDomFree)
+			window.home();
+	};
+	Acts.prototype.GoToURL = function (url)
+	{
+		if (this.runtime.isCocoonJs)
+			CocoonJS["App"]["openURL"](url);
+		else if (!this.is_arcade && !this.runtime.isDomFree)
+			window.location = url;
+	};
+	Acts.prototype.GoToURLWindow = function (url, tag)
+	{
+		if (this.runtime.isCocoonJs)
+			CocoonJS["App"]["openURL"](url);
+		else if (!this.is_arcade && !this.runtime.isDomFree)
+			window.open(url, tag);
+	};
+	Acts.prototype.Reload = function ()
+	{
+		if (!this.is_arcade && !this.runtime.isDomFree)
+			window.location.reload();
+	};
+	var firstRequestFullscreen = true;
+	var crruntime = null;
+	function onFullscreenError()
+	{
+		if (typeof jQuery !== "undefined")
+		{
+			crruntime["setSize"](jQuery(window).width(), jQuery(window).height());
+		}
+	};
+	Acts.prototype.RequestFullScreen = function (stretchmode)
+	{
+		if (this.runtime.isDomFree)
+		{
+			cr.logexport("[Construct 2] Requesting fullscreen is not supported on this platform - the request has been ignored");
+			return;
+		}
+		if (stretchmode >= 2)
+			stretchmode += 1;
+		if (stretchmode === 6)
+			stretchmode = 2;
+		if (this.runtime.isNodeWebkit)
+		{
+			if (!this.runtime.isNodeFullscreen)
+			{
+				window["nwgui"]["Window"]["get"]()["enterFullscreen"]();
+				this.runtime.isNodeFullscreen = true;
+			}
+		}
+		else
+		{
+			if (document["mozFullScreen"] || document["webkitIsFullScreen"] || document["fullScreen"])
+				return;
+			this.fullscreenOldMarginCss = jQuery(this.runtime.canvasdiv).css("margin");
+			jQuery(this.runtime.canvasdiv).css("margin", "0");
+			window["c2resizestretchmode"] = (stretchmode > 0 ? 1 : 0);
+			this.runtime.fullscreen_scaling = (stretchmode >= 2 ? stretchmode : 0);
+			var elem = this.runtime.canvasdiv || this.runtime.canvas;
+			if (firstRequestFullscreen)
+			{
+				firstRequestFullscreen = false;
+				crruntime = this.runtime;
+				elem.addEventListener("mozfullscreenerror", onFullscreenError);
+				elem.addEventListener("webkitfullscreenerror", onFullscreenError);
+				elem.addEventListener("msfullscreenerror", onFullscreenError);
+				elem.addEventListener("fullscreenerror", onFullscreenError);
+			}
+			if (!cr.is_undefined(elem["webkitRequestFullScreen"]))
+			{
+				if (typeof Element !== "undefined" && typeof Element["ALLOW_KEYBOARD_INPUT"] !== "undefined")
+					elem["webkitRequestFullScreen"](Element["ALLOW_KEYBOARD_INPUT"]);
+				else
+					elem["webkitRequestFullScreen"]();
+			}
+			else if (!cr.is_undefined(elem["mozRequestFullScreen"]))
+				elem["mozRequestFullScreen"]();
+			else if (!cr.is_undefined(elem["requestFullscreen"]))
+				elem["requestFullscreen"]();
+		}
+	};
+	Acts.prototype.CancelFullScreen = function ()
+	{
+		if (this.runtime.isDomFree)
+		{
+			cr.logexport("[Construct 2] Exiting fullscreen is not supported on this platform - the request has been ignored");
+			return;
+		}
+		if (this.runtime.isNodeWebkit)
+		{
+			if (this.runtime.isNodeFullscreen)
+			{
+				window["nwgui"]["Window"]["get"]()["leaveFullscreen"]();
+				this.runtime.isNodeFullscreen = false;
+			}
+		}
+		else
+		{
+			if (!cr.is_undefined(document["webkitCancelFullScreen"]))
+				document["webkitCancelFullScreen"]();
+			if (!cr.is_undefined(document["mozCancelFullScreen"]))
+				document["mozCancelFullScreen"]();
+			if (!cr.is_undefined(document["exitFullscreen"]))
+				document["exitFullscreen"]();
+			jQuery(this.runtime.canvasdiv).css("margin", this.fullscreenOldMarginCss);
+		}
+	};
+	Acts.prototype.Vibrate = function (pattern_)
+	{
+		try {
+			var arr = pattern_.split(",");
+			var i, len;
+			for (i = 0, len = arr.length; i < len; i++)
+			{
+				arr[i] = parseInt(arr[i], 10);
+			}
+			if (navigator["vibrate"])
+				navigator["vibrate"](arr);
+			else if (navigator["mozVibrate"])
+				navigator["mozVibrate"](arr);
+			else if (navigator["webkitVibrate"])
+				navigator["webkitVibrate"](arr);
+		}
+		catch (e) {}
+	};
+	Acts.prototype.InvokeDownload = function (url_, filename_)
+	{
+		var a = document.createElement("a");
+		if (typeof a.download === "undefined")
+		{
+			window.open(url_);
+		}
+		else
+		{
+			var body = document.getElementsByTagName("body")[0];
+			a.textContent = filename_;
+			a.href = url_;
+			a.download = filename_;
+			body.appendChild(a);
+			var clickEvent = document.createEvent("MouseEvent");
+			clickEvent.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+			a.dispatchEvent(clickEvent);
+			body.removeChild(a);
+		}
+	};
+	Acts.prototype.ConsoleLog = function (type_, msg_)
+	{
+		if (!console)
+			return;
+		if (type_ === 0 && console.log)
+			console.log(msg_);
+		if (type_ === 1 && console.warn)
+			console.warn(msg_);
+		if (type_ === 2 && console.error)
+			console.error(msg_);
+	};
+	Acts.prototype.ConsoleGroup = function (name_)
+	{
+		if (console && console.group)
+			console.group(name_);
+	};
+	Acts.prototype.ConsoleGroupEnd = function ()
+	{
+		if (console && console.groupEnd)
+			console.groupEnd();
+	};
+	Acts.prototype.ExecJs = function (js_)
+	{
+		if (eval)
+			eval(js_);
+	};
+	pluginProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.URL = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : window.location.toString());
+	};
+	Exps.prototype.Protocol = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : window.location.protocol);
+	};
+	Exps.prototype.Domain = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : window.location.hostname);
+	};
+	Exps.prototype.PathName = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : window.location.pathname);
+	};
+	Exps.prototype.Hash = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : window.location.hash);
+	};
+	Exps.prototype.Referrer = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : document.referrer);
+	};
+	Exps.prototype.Title = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : document.title);
+	};
+	Exps.prototype.Name = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : navigator.appName);
+	};
+	Exps.prototype.Version = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : navigator.appVersion);
+	};
+	Exps.prototype.Language = function (ret)
+	{
+		if (navigator && navigator.language)
+			ret.set_string(navigator.language);
+		else
+			ret.set_string("");
+	};
+	Exps.prototype.Platform = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : navigator.platform);
+	};
+	Exps.prototype.Product = function (ret)
+	{
+		if (navigator && navigator.product)
+			ret.set_string(navigator.product);
+		else
+			ret.set_string("");
+	};
+	Exps.prototype.Vendor = function (ret)
+	{
+		if (navigator && navigator.vendor)
+			ret.set_string(navigator.vendor);
+		else
+			ret.set_string("");
+	};
+	Exps.prototype.UserAgent = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : navigator.userAgent);
+	};
+	Exps.prototype.QueryString = function (ret)
+	{
+		ret.set_string(this.runtime.isDomFree ? "" : window.location.search);
+	};
+	Exps.prototype.QueryParam = function (ret, paramname)
+	{
+		if (this.runtime.isDomFree)
+		{
+			ret.set_string("");
+			return;
+		}
+		var match = RegExp('[?&]' + paramname + '=([^&]*)').exec(window.location.search);
+		if (match)
+			ret.set_string(decodeURIComponent(match[1].replace(/\+/g, ' ')));
+		else
+			ret.set_string("");
+	};
+	Exps.prototype.Bandwidth = function (ret)
+	{
+		var connection = navigator["connection"] || navigator["mozConnection"] || navigator["webkitConnection"];
+		if (!connection)
+			ret.set_float(Number.POSITIVE_INFINITY);
+		else
+			ret.set_float(connection["bandwidth"]);
+	};
+	Exps.prototype.BatteryLevel = function (ret)
+	{
+		var battery = navigator["battery"] || navigator["mozBattery"] || navigator["webkitBattery"];
+		if (!battery)
+			ret.set_float(1);
+		else
+			ret.set_float(battery["level"]);
+	};
+	Exps.prototype.BatteryTimeLeft = function (ret)
+	{
+		var battery = navigator["battery"] || navigator["mozBattery"] || navigator["webkitBattery"];
+		if (!battery)
+			ret.set_float(Number.POSITIVE_INFINITY);
+		else
+			ret.set_float(battery["dischargingTime"]);
+	};
+	Exps.prototype.ExecJS = function (ret, js_)
+	{
+		if (!eval)
+		{
+			ret.set_any(0);
+			return;
+		}
+		var result = eval(js_);
+		if (typeof result === "number")
+			ret.set_any(result);
+		else if (typeof result === "string")
+			ret.set_any(result);
+		else if (typeof result === "boolean")
+			ret.set_any(result ? 1 : 0);
+		else
+			ret.set_any(0);
+	};
+	pluginProto.exps = new Exps();
+}());
+;
+;
 cr.plugins_.Sprite = function(runtime)
 {
 	this.runtime = runtime;
@@ -13401,6 +13895,18 @@ cr.getProjectModel = function() { return [
 	null,
 	[
 	[
+		cr.plugins_.Browser,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
 		cr.plugins_.rex_TouchWrap,
 		true,
 		false,
@@ -13995,6 +14501,23 @@ cr.getProjectModel = function() { return [
 		[]
 		,[1]
 	]
+,	[
+		"t11",
+		cr.plugins_.Browser,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		9396921042486715,
+		[]
+		,[]
+	]
 	],
 	[
 	],
@@ -14363,6 +14886,78 @@ cr.getProjectModel = function() { return [
 			]
 			]
 		]
+,		[
+			0,
+			null,
+			false,
+			4376310042884048,
+			[
+			[
+				10,
+				cr.plugins_.rex_TouchWrap.prototype.cnds.OnTouchStart,
+				null,
+				1,
+				false,
+				false,
+				false,
+				2283184271947842
+			]
+			],
+			[
+			[
+				-1,
+				cr.system_object.prototype.acts.SetCanvasSize,
+				null,
+				7821474934867942
+				,[
+				[
+					0,
+					[
+						0,
+						480
+					]
+				]
+,				[
+					0,
+					[
+						0,
+						360
+					]
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.acts.ScrollY,
+				null,
+				3271278043529345
+				,[
+				[
+					0,
+					[
+						0,
+						360
+					]
+				]
+				]
+			]
+,			[
+				11,
+				cr.plugins_.Browser.prototype.acts.Alert,
+				null,
+				8004582019630023
+				,[
+				[
+					7,
+					[
+						19,
+						cr.system_object.prototype.exps.windowheight
+					]
+				]
+				]
+			]
+			]
+		]
 		]
 	]
 	],
@@ -14374,12 +14969,12 @@ cr.getProjectModel = function() { return [
 	true,
 	true,
 	true,
-	"1.4.2.0",
+	"1.4.3.0",
 	1,
 	false,
 	0,
 	false,
-	11,
+	12,
 	false,
 	[
 	]
