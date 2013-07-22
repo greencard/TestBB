@@ -15153,316 +15153,6 @@ cr.plugins_.Mouse = function(runtime)
 }());
 ;
 ;
-cr.plugins_.Rex_Container = function(runtime)
-{
-	this.runtime = runtime;
-};
-cr.plugins_.Rex_Container.tag2container = {};
-(function ()
-{
-	var pluginProto = cr.plugins_.Rex_Container.prototype;
-	pluginProto.Type = function(plugin)
-	{
-		this.plugin = plugin;
-		this.runtime = plugin.runtime;
-	};
-	var typeProto = pluginProto.Type.prototype;
-	typeProto.onCreate = function()
-	{
-        this.uid2container = {};  // pick container from instance's uid
-	};
-	pluginProto.Instance = function(type)
-	{
-		this.type = type;
-		this.runtime = type.runtime;
-	};
-	var instanceProto = pluginProto.Instance.prototype;
-	instanceProto.onCreate = function()
-	{
-	    this.check_name = "CONTAINER";
-        this.insts_group = {};
-		this.myDestroyCallback = (function (self) {
-											return function(inst) {
-												self.onInstanceDestroyed(inst);
-											};
-										})(this);
-        this.runtime.addDestroyCallback(this.myDestroyCallback);
-        this.pin_mode = this.properties[0];
-		this.tag = this.properties[2];
-		cr.plugins_.Rex_Container.tag2container[this.tag] = this;
-        if (this.pin_mode != 0)
-        {
-            this.pin_status = {};
-            this.runtime.tick2Me(this);
-        }
-	};
-	instanceProto.onInstanceDestroyed = function (inst)
-	{
-        var uid=inst.uid;
-        if (!(uid in this.type.uid2container))
-            return;
-        var type_name = inst.type.name;
-        delete this.insts_group[type_name][uid];
-        delete this.type.uid2container[uid];
-        if ((this.pin_mode != 0) && (this.pin_status[uid] != null))
-            delete this.pin_status[uid];
-	};
-	instanceProto.onDestroy = function ()
-	{
-	    delete cr.plugins_.Rex_Container.tag2container[this.tag];
-        var uid2container = this.type.uid2container;
-        var type_name,_container,uid,inst;
-        for (type_name in this.insts_group)
-        {
-            _container = this.insts_group[type_name];
-            for(uid in _container)
-            {
-                delete uid2container[uid];
-            }
-        }
-		this.runtime.removeDestroyCallback(this.myDestroyCallback);
-	};
-	instanceProto.tick2 = function ()
-	{
-	    if (this.pin_mode == 0)
-	        return;
-	    var uid,status,pin_inst,a,new_x,new_y,new_angle;
-	    for (uid in this.pin_status)
-	    {
-	        status = this.pin_status[uid];
-            pin_inst = status.pin_inst;
-            if ((this.pin_mode == 1) || (this.pin_mode == 2))
-			{
-			    a = this.angle + status.delta_angle;
-                new_x = this.x + (status.delta_dist*Math.cos(a));
-                new_y = this.y + (status.delta_dist*Math.sin(a));
-			}
-            if ((this.pin_mode == 1) || (this.pin_mode == 3))
-			{
-			    new_angle = status.sub_start_angle + (this.angle - status.main_start_angle);
-			}
-            if (((new_x != null) && (new_y != null)) &&
-			    ((new_x != pin_inst.x) || (new_y != pin_inst.y)))
-            {
-			    pin_inst.x = new_x;
-			    pin_inst.y = new_y;
-			    pin_inst.set_bbox_changed();
-            }
-			if ((new_angle != null) && (new_angle != pin_inst.angle))
-			{
-			    pin_inst.angle = new_angle;
-			    pin_inst.set_bbox_changed();
-			}
-	    }
-	};
-	instanceProto.draw = function(ctx)
-	{
-	};
-	instanceProto.drawGL = function(glw)
-	{
-	};
-	instanceProto.add_insts = function (insts)
-	{
-        var type_name=insts[0].type.name;
-        if (this.insts_group[type_name]==null)
-            this.insts_group[type_name] = {};
-        var _container = this.insts_group[type_name];
-        var inst,uid,i,cnt=insts.length;
-        var uid2container = this.type.uid2container;
-		var is_world = insts[0].type.plugin.is_world;
-        for (i=0;i<cnt;i++)
-        {
-            inst = insts[i];
-            uid = inst.uid;
-            uid2container[uid] = this;
-            _container[uid] = inst;
-            if (is_world && (this.pin_mode != 0))
-                this.pin_inst(inst);
-        }
-	};
-	instanceProto.pin_inst = function (inst)
-	{
-        this.pin_status[inst.uid] = {pin_inst:inst,
-                                     delta_angle:cr.angleTo(this.x, this.y, inst.x, inst.y) - this.angle,
-                                     delta_dist:cr.distanceTo(this.x, this.y, inst.x, inst.y),
-									 main_start_angle:this.angle,
-									 sub_start_angle:inst.angle,
-                                    };
-	};
-	instanceProto.create_insts = function (obj_type,x,y,_layer)
-	{
-        if (obj_type == null)
-            return;
-        var layer = (typeof _layer == "number")?
-                    this.runtime.getLayerByNumber(_layer):
-                    this.runtime.getLayerByName(_layer);
-        var inst = this.runtime.createInstance(obj_type, layer, x, y );
-        var sol = inst.type.getCurrentSol();
-        sol.select_all = false;
-		sol.instances.length = 1;
-		sol.instances[0] = inst;
-	    this.add_insts([inst]);
-	    return inst;
-	};
-	instanceProto.remove_insts = function (insts)
-	{
-        var type_name=insts[0].type.name;
-        if (this.insts_group[type_name]==null)
-            this.insts_group[type_name] = {};
-        var _container = this.insts_group[type_name];
-        var inst,uid,i,cnt=insts.length;
-        var uid2container = this.type.uid2container;
-        for (i=0;i<cnt;i++)
-        {
-            inst = insts[i];
-            uid = inst.uid;
-            if (uid in uid2container)
-            {
-                delete uid2container[uid];
-                delete _container[uid];
-            }
-        }
-	};
-    instanceProto._pick_insts = function (objtype)
-	{
-        var type_name=objtype.name;
-	    var _container = this.insts_group[type_name];
-        var sol = objtype.getCurrentSol();
-        sol.select_all = true;
-        var insts = sol.getObjects();
-        var insts_length = insts.length;
-        var i, inst;
-        sol.instances.length = 0;   // clear contents
-        for (i=0; i < insts_length; i++)
-        {
-           inst = insts[i];
-           if (inst.uid in _container)
-               sol.instances.push(inst);
-        }
-        sol.select_all = false;
-        return  (sol.instances.length >0);
-	};
-	instanceProto._pick_all_insts = function ()
-	{
-	    var type_name, _container, uid, inst, objtype, sol;
-	    var has_inst = false;
-        for (type_name in this.insts_group)
-        {
-            _container = this.insts_group[type_name];
-            objtype = null;
-            for (uid in _container)
-            {
-                inst = _container[uid];
-                if (objtype == null)
-                {
-                    objtype = inst.type;
-                    sol = objtype.getCurrentSol();
-                    sol.select_all = false;
-                    sol.instances.length = 0;
-                }
-                sol.instances.push(inst);
-                has_inst = true;
-            }
-        }
-        return has_inst;
-	};
-	instanceProto._destory_all_insts = function ()
-	{
-        var uid2container = this.type.uid2container;
-        var type_name,_container,uid,inst;
-        for (type_name in this.insts_group)
-        {
-            _container = this.insts_group[type_name];
-            for(uid in _container)
-            {
-                inst = _container[uid];
-                delete _container[uid];
-                delete uid2container[uid];
-                this.runtime.DestroyInstance(inst);
-            }
-        }
-	};
-	function Cnds() {};
-	pluginProto.cnds = new Cnds();
-	Cnds.prototype.PickInsts = function (objtype)
-	{
-		return this._pick_insts(objtype);
-		return true;
-	};
-	Cnds.prototype.PickContainer =function (objtype)
-	{
-    	var insts = objtype.getCurrentSol().getObjects();
-    	var cnt = insts.length;
-    	if (cnt == 0)
-            return false;
-        var i,container,container_uid,uids={};
-	    var runtime = this.runtime;
-	    var container_type = runtime.getCurrentCondition().type;
-        var sol = container_type.getCurrentSol();
-        sol.select_all = false;
-        sol.instances.length = 0;
-        for (i=0;i<cnt;i++)
-        {
-            container = container_type.uid2container[insts[i].uid];
-            container_uid = container.uid;
-            if ((container!=null) && !(container_uid in uids))
-            {
-                sol.instances.push(container);
-                uids[container_uid] = true;
-            }
-        }
-        var current_event = runtime.getCurrentEventStack().current_event;
-        runtime.pushCopySol(current_event.solModifiers);
-        current_event.retrigger();
-        runtime.popSol(current_event.solModifiers);
-		return false;
-	};
-	Cnds.prototype.PickAllInsts = function ()
-	{
-	    return this._pick_all_insts();
-	};
-	function Acts() {};
-	pluginProto.acts = new Acts();
-	Acts.prototype.AddInsts = function (objtype)
-	{
-        var insts = objtype.getCurrentSol().getObjects();
-        if (insts.length==0)
-            return;
-	    this.add_insts(insts);
-	};
-    Acts.prototype.PickInsts = function (objtype)
-	{
-	    this._pick_insts(objtype);
-	};
-	Acts.prototype.PickAllInsts = function ()
-	{
-	    this._pick_all_insts();
-	};
-	Acts.prototype.CreateInsts = function (obj_type,x,y,_layer)
-	{
-        this.create_insts(obj_type,x,y,_layer);
-	};
-	Acts.prototype.RemoveInsts = function (objtype)
-	{
-        var insts = objtype.getCurrentSol().getObjects();
-        if (insts.length==0)
-            return;
-	    this.remove_insts(insts);
-	};
-	Acts.prototype.ContainerDestroy = function ()
-	{
-	    this._destory_all_insts();
-		this.runtime.DestroyInstance(this);
-	};
-	function Exps() {};
-	pluginProto.exps = new Exps();
-	Exps.prototype.Tag = function (ret)
-	{
-		ret.set_string(this.tag);
-	};
-}());
-;
-;
 cr.plugins_.Rex_SysExt = function(runtime)
 {
 	this.runtime = runtime;
@@ -19128,18 +18818,6 @@ cr.getProjectModel = function() { return [
 		false
 	]
 ,	[
-		cr.plugins_.Rex_Container,
-		false,
-		true,
-		true,
-		true,
-		true,
-		false,
-		false,
-		false,
-		false
-	]
-,	[
 		cr.plugins_.Rex_SysExt,
 		true,
 		false,
@@ -20207,22 +19885,6 @@ cr.getProjectModel = function() { return [
 	]
 ,	[
 		"t28",
-		cr.plugins_.Rex_Container,
-		false,
-		[],
-		0,
-		0,
-		null,
-		null,
-		[
-		],
-		false,
-		false,
-		2218021745147041,
-		[]
-	]
-,	[
-		"t29",
 		cr.plugins_.Text,
 		false,
 		[],
@@ -20556,22 +20218,8 @@ cr.getProjectModel = function() { return [
 				]
 			]
 ,			[
-				[-68, 33, 0, 37.4967, 37.4967, 0, 0, 1, 0, 0, 0, 0, []],
-				28,
-				28,
-				[
-				],
-				[
-				],
-				[
-					0,
-					0,
-					""
-				]
-			]
-,			[
 				[214, 17, 0, 43, 24, 0, 0, 1, 0, 0, 0, 0, []],
-				29,
+				28,
 				29,
 				[
 				],
@@ -21086,12 +20734,6 @@ false,false,1247528663516111
 				cr.plugins_.Sprite.prototype.acts.Destroy,
 				null,
 				4896364353609775
-			]
-,			[
-				28,
-				cr.plugins_.Rex_Container.prototype.acts.Destroy,
-				null,
-				4651003591127683
 			]
 ,			[
 				19,
@@ -22870,52 +22512,9 @@ false,false,1247528663516111
 				false,
 				9881131480885289,
 				[
-				[
-					28,
-					cr.plugins_.Rex_Container.prototype.cnds.OnDestroyed,
-					null,
-					1,
-					false,
-					false,
-					false,
-					2067265752275683
-				]
 				],
 				[
 				[
-					-1,
-					cr.system_object.prototype.acts.CreateObject,
-					null,
-					3863560936086006
-					,[
-					[
-						4,
-						28
-					]
-,					[
-						5,
-						[
-							0,
-							1
-						]
-					]
-,					[
-						0,
-						[
-							0,
-							0
-						]
-					]
-,					[
-						0,
-						[
-							0,
-							0
-						]
-					]
-					]
-				]
-,				[
 					-1,
 					cr.system_object.prototype.acts.SetVar,
 					null,
@@ -27751,7 +27350,7 @@ false,false,1247528663516111
 						,[
 						[
 							4,
-							29
+							28
 						]
 ,						[
 							5,
@@ -27797,7 +27396,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.behaviors.Pin.prototype.acts.Pin,
 						"Pin",
 						3713645165918705
@@ -27813,7 +27412,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.acts.SetFontFace,
 						null,
 						3750877478513444
@@ -27832,7 +27431,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.acts.SetFontSize,
 						null,
 						6760765775207112
@@ -27847,7 +27446,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.acts.SetWidth,
 						null,
 						4964434399291426
@@ -27862,7 +27461,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.acts.SetFontColor,
 						null,
 						8805897787183589
@@ -27914,7 +27513,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.acts.SetText,
 						null,
 						9486534886338552
@@ -28072,7 +27671,7 @@ false,false,1247528663516111
 							,[
 							[
 								4,
-								29
+								28
 							]
 ,							[
 								5,
@@ -28118,7 +27717,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.behaviors.Pin.prototype.acts.Pin,
 							"Pin",
 							2293800870298917
@@ -28134,7 +27733,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetFontFace,
 							null,
 							6291896532513285
@@ -28153,7 +27752,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetFontSize,
 							null,
 							8942054010007457
@@ -28168,7 +27767,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetWidth,
 							null,
 							9209362620521684
@@ -28183,7 +27782,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetFontColor,
 							null,
 							2283031838231279
@@ -28235,7 +27834,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetText,
 							null,
 							1018515197713493
@@ -28476,7 +28075,7 @@ false,false,1247528663516111
 							,[
 							[
 								4,
-								29
+								28
 							]
 ,							[
 								0,
@@ -28501,7 +28100,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.behaviors.Pin.prototype.acts.Pin,
 							"Pin",
 							5775138804865441
@@ -28517,7 +28116,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetText,
 							null,
 							2976391366088335
@@ -28596,7 +28195,7 @@ false,false,1247528663516111
 								,[
 								[
 									4,
-									29
+									28
 								]
 ,								[
 									0,
@@ -28621,7 +28220,7 @@ false,false,1247528663516111
 								]
 							]
 ,							[
-								29,
+								28,
 								cr.plugins_.Text.prototype.acts.SetText,
 								null,
 								7798691744178939
@@ -28697,7 +28296,7 @@ false,false,1247528663516111
 								,[
 								[
 									4,
-									29
+									28
 								]
 ,								[
 									0,
@@ -28722,7 +28321,7 @@ false,false,1247528663516111
 								]
 							]
 ,							[
-								29,
+								28,
 								cr.plugins_.Text.prototype.acts.SetText,
 								null,
 								1494732713980121
@@ -28915,7 +28514,7 @@ false,false,1247528663516111
 						]
 					]
 ,					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.cnds.PickByUID,
 						null,
 						0,
@@ -28945,7 +28544,7 @@ false,false,1247528663516111
 					],
 					[
 					[
-						29,
+						28,
 						cr.plugins_.Text.prototype.acts.SetText,
 						null,
 						4869062902193776
@@ -29125,7 +28724,7 @@ false,false,1247528663516111
 							]
 						]
 ,						[
-							29,
+							28,
 							cr.plugins_.Text.prototype.acts.SetText,
 							null,
 							8457647175571132
