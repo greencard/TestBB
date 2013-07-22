@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.powers.mobile" version="1.4.6.0">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:gap="http://phonegap.com/ns/1.0" id="com.powers.mobile" version="1.4.7.0">
 
-	<name>bj</name>
+	<name>bj1</name>
 	<description>Black Jack</description>
 	<author>S. Korenko</author>
 
@@ -22,6 +22,6 @@
 	<preference name="target-device" value="universal" />
 
 	<!-- Optional splash screen image, e.g.: -->
-	<!-- <gap:splash src="splash.png" width="1024" height="768" /> -->
+	<!-- <gap:splash src="splash.png" width="480" height="360" /> -->
 
 </widget>
