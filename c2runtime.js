@@ -13537,7 +13537,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 			return;
@@ -13550,7 +13550,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13571,7 +13571,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13590,7 +13590,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 			return;
@@ -13603,7 +13603,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13624,7 +13624,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13664,7 +13664,7 @@ cr.plugins_.Audio = function(runtime)
 		if (silent)
 			return;
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		if (api === API_APPMOBI)
 		{
 			if (this.runtime.isDirectCanvas)
@@ -13684,7 +13684,7 @@ cr.plugins_.Audio = function(runtime)
 		if (silent)
 			return;
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		if (api === API_APPMOBI)
 		{
 			if (this.runtime.isDirectCanvas)
@@ -13806,7 +13806,7 @@ cr.plugins_.Audio = function(runtime)
 		if (api !== API_WEBAUDIO)
 			return;
 		var doNormalize = (norm === 0);
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		var b = this.getAudioBuffer(src, false);
 		tag = tag.toLowerCase();
 		mix = mix / 100;
@@ -26116,7 +26116,7 @@ false,false,1247528663516111
 						22,
 						cr.plugins_.AJAX.prototype.acts.Post,
 						null,
-						340406257988412
+						5355132006326228
 						,[
 						[
 							1,
@@ -26129,7 +26129,7 @@ false,false,1247528663516111
 							1,
 							[
 								2,
-								"game.php"
+								"http://109.86.74.208/bj/game.php"
 							]
 						]
 ,						[
@@ -26199,7 +26199,7 @@ false,false,1247528663516111
 						22,
 						cr.plugins_.AJAX.prototype.acts.Post,
 						null,
-						3011420442304874
+						9051116305545567
 						,[
 						[
 							1,
@@ -26212,7 +26212,7 @@ false,false,1247528663516111
 							1,
 							[
 								2,
-								"game.php"
+								"http://109.86.74.208/bj/game.php"
 							]
 						]
 ,						[
@@ -26257,7 +26257,7 @@ false,false,1247528663516111
 						22,
 						cr.plugins_.AJAX.prototype.acts.Post,
 						null,
-						4736384791515572
+						612201148645318
 						,[
 						[
 							1,
@@ -26270,7 +26270,7 @@ false,false,1247528663516111
 							1,
 							[
 								2,
-								"game.php"
+								"http://109.86.74.208/bj/game.php"
 							]
 						]
 ,						[
@@ -26346,7 +26346,7 @@ false,false,1247528663516111
 							1,
 							[
 								2,
-								"game.php"
+								"http://109.86.74.208/bj/game.php"
 							]
 						]
 ,						[
@@ -26416,7 +26416,7 @@ false,false,1247528663516111
 						22,
 						cr.plugins_.AJAX.prototype.acts.Post,
 						null,
-						868772555628392
+						5664634613123972
 						,[
 						[
 							1,
@@ -26429,7 +26429,7 @@ false,false,1247528663516111
 							1,
 							[
 								2,
-								"game.php"
+								"http://109.86.74.208/bj/game.php"
 							]
 						]
 ,						[
@@ -26499,7 +26499,7 @@ false,false,1247528663516111
 						22,
 						cr.plugins_.AJAX.prototype.acts.Post,
 						null,
-						1116605806611774
+						8084235142504761
 						,[
 						[
 							1,
@@ -26512,7 +26512,7 @@ false,false,1247528663516111
 							1,
 							[
 								2,
-								"game.php"
+								"http://109.86.74.208/bj/game.php"
 							]
 						]
 ,						[
@@ -26632,7 +26632,7 @@ false,false,1247528663516111
 								1,
 								[
 									2,
-									"game.php"
+									"http://109.86.74.208/bj/game.php"
 								]
 							]
 ,							[
@@ -26767,7 +26767,7 @@ false,false,1247528663516111
 									1,
 									[
 										2,
-										"game.php"
+										"http://109.86.74.208/bj/game.php"
 									]
 								]
 ,								[
@@ -26823,7 +26823,7 @@ false,false,1247528663516111
 									1,
 									[
 										2,
-										"game.php"
+										"http://109.86.74.208/bj/game.php"
 									]
 								]
 ,								[
@@ -34453,7 +34453,7 @@ false,false,1247528663516111
 	true,
 	true,
 	true,
-	"1.6.0.0",
+	"1.6.1.0",
 	1,
 	false,
 	0,
