@@ -10485,6 +10485,207 @@ cr.do_cmp = function (x, cmp, y)
 cr.shaders = {};
 ;
 ;
+cr.plugins_.AJAX = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var isNodeWebkit = false;
+	var path = null;
+	var fs = null;
+	var nw_appfolder = "";
+	var pluginProto = cr.plugins_.AJAX.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		this.lastData = "";
+		this.curTag = "";
+		this.progress = 0;
+		isNodeWebkit = this.runtime.isNodeWebkit;
+		if (isNodeWebkit)
+		{
+			path = require("path");
+			fs = require("fs");
+			nw_appfolder = path["dirname"](process["execPath"]) + "\\";
+		}
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	var theInstance = null;
+	window["C2_AJAX_DCSide"] = function (event_, tag_, param_)
+	{
+		if (!theInstance)
+			return;
+		if (event_ === "success")
+		{
+			theInstance.curTag = tag_;
+			theInstance.lastData = param_;
+			theInstance.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnComplete, theInstance);
+		}
+		else if (event_ === "error")
+		{
+			theInstance.curTag = tag_;
+			theInstance.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnError, theInstance);
+		}
+		else if (event_ === "progress")
+		{
+			theInstance.progress = param_;
+			theInstance.curTag = tag_;
+			theInstance.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnProgress, theInstance);
+		}
+	};
+	instanceProto.onCreate = function()
+	{
+		theInstance = this;
+	};
+	instanceProto.saveToJSON = function ()
+	{
+		return { "lastData": this.lastData };
+	};
+	instanceProto.loadFromJSON = function (o)
+	{
+		this.lastData = o["lastData"];
+		this.curTag = "";
+		this.progress = 0;
+	};
+	instanceProto.doRequest = function (tag_, url_, method_, data_)
+	{
+		if (this.runtime.isDirectCanvas)
+		{
+			AppMobi["webview"]["execute"]('C2_AJAX_WebSide("' + tag_ + '", "' + url_ + '", "' + method_ + '", ' + (data_ ? '"' + data_ + '"' : "null") + ');');
+			return;
+		}
+		var self = this;
+		var request = null;
+		var doErrorFunc = function ()
+		{
+			self.curTag = tag_;
+			self.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnError, self);
+		};
+		var errorFunc = function ()
+		{
+			if (isNodeWebkit)
+			{
+				var filepath = nw_appfolder + url_;
+				if (fs["existsSync"](filepath))
+				{
+					fs["readFile"](filepath, {"encoding": "utf8"}, function (err, data) {
+						if (err)
+						{
+							doErrorFunc();
+							return;
+						}
+						self.lastData = data.replace(/\r\n/g, "\n")
+						self.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnComplete, self);
+					});
+				}
+				else
+					doErrorFunc();
+			}
+			else
+				doErrorFunc();
+		};
+		var progressFunc = function (e)
+		{
+			if (!e["lengthComputable"])
+				return;
+			self.progress = e.loaded / e.total;
+			self.curTag = tag_;
+			self.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnProgress, self);
+		};
+		try
+		{
+			request = new XMLHttpRequest();
+			request.onreadystatechange = function() {
+				if (request.readyState === 4 && (isNodeWebkit || request.status !== 0))
+				{
+					self.curTag = tag_;
+					if (request.status >= 400)
+						self.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnError, self);
+					else
+					{
+						self.lastData = request.responseText.replace(/\r\n/g, "\n");		// fix windows style line endings
+						if (!isNodeWebkit || self.lastData.length)
+							self.runtime.trigger(cr.plugins_.AJAX.prototype.cnds.OnComplete, self);
+					}
+				}
+			};
+			request.onerror = errorFunc;
+			request.ontimeout = errorFunc;
+			request.onabort = errorFunc;
+			request["onprogress"] = progressFunc;
+			request.open(method_, url_);
+			try {
+				request.responseType = "text";
+			} catch (e) {}
+			if (method_ === "POST" && data_)
+			{
+				if (request["setRequestHeader"])
+				{
+					request["setRequestHeader"]("Content-Type", "application/x-www-form-urlencoded");
+					request["setRequestHeader"]("Content-Length", data_.length);
+				}
+				request.send(data_);
+			}
+			else
+				request.send();
+		}
+		catch (e)
+		{
+			errorFunc();
+		}
+	};
+	function Cnds() {};
+	Cnds.prototype.OnComplete = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	Cnds.prototype.OnError = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	Cnds.prototype.OnProgress = function (tag)
+	{
+		return tag.toLowerCase() === this.curTag.toLowerCase();
+	};
+	pluginProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.Request = function (tag_, url_)
+	{
+		this.doRequest(tag_, url_, "GET");
+	};
+	Acts.prototype.RequestFile = function (tag_, file_)
+	{
+		this.doRequest(tag_, file_, "GET");
+	};
+	Acts.prototype.Post = function (tag_, url_, data_)
+	{
+		this.doRequest(tag_, url_, "POST", data_);
+	};
+	pluginProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.LastData = function (ret)
+	{
+		ret.set_string(this.lastData);
+	};
+	Exps.prototype.Progress = function (ret)
+	{
+		ret.set_float(this.progress);
+	};
+	pluginProto.exps = new Exps();
+}());
+;
+;
 cr.plugins_.Arr = function(runtime)
 {
 	this.runtime = runtime;
@@ -11138,6 +11339,2685 @@ cr.plugins_.Arr = function(runtime)
 	Exps.prototype.AsJSON = function (ret)
 	{
 		ret.set_string(this.getAsJSON());
+	};
+	pluginProto.exps = new Exps();
+}());
+;
+;
+cr.plugins_.Audio = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Audio.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	var audRuntime = null;
+	var audInst = null;
+	var audTag = "";
+	var appPath = "";			// for PhoneGap only
+	var API_HTML5 = 0;
+	var API_WEBAUDIO = 1;
+	var API_PHONEGAP = 2;
+	var API_APPMOBI = 3;
+	var api = API_HTML5;
+	var context = null;
+	var audioBuffers = [];		// cache of buffers
+	var audioInstances = [];	// cache of instances
+	var lastAudio = null;
+	var useOgg = false;			// determined at create time
+	var timescale_mode = 0;
+	var silent = false;
+	var masterVolume = 1;
+	var panningModel = 1;		// HRTF
+	var distanceModel = 1;		// Inverse
+	var refDistance = 10;
+	var maxDistance = 10000;
+	var rolloffFactor = 1;
+	var micSource = null;
+	var micTag = "";
+	function dbToLinear(x)
+	{
+		var v = dbToLinear_nocap(x);
+		if (v < 0)
+			v = 0;
+		if (v > 1)
+			v = 1;
+		return v;
+	};
+	function linearToDb(x)
+	{
+		if (x < 0)
+			x = 0;
+		if (x > 1)
+			x = 1;
+		return linearToDb_nocap(x);
+	};
+	function dbToLinear_nocap(x)
+	{
+		return Math.pow(10, x / 20);
+	};
+	function linearToDb_nocap(x)
+	{
+		return (Math.log(x) / Math.log(10)) * 20;
+	};
+	var effects = {};
+	function getDestinationForTag(tag)
+	{
+		tag = tag.toLowerCase();
+		if (effects.hasOwnProperty(tag))
+		{
+			if (effects[tag].length)
+				return effects[tag][0].getInputNode();
+		}
+		return context["destination"];
+	};
+	function createGain()
+	{
+		if (context["createGain"])
+			return context["createGain"]();
+		else
+			return context["createGainNode"]();
+	};
+	function createDelay(d)
+	{
+		if (context["createDelay"])
+			return context["createDelay"](d);
+		else
+			return context["createDelayNode"](d);
+	};
+	function startSource(s)
+	{
+		if (s["start"])
+			s["start"](0);
+		else
+			s["noteOn"](0);
+	};
+	function startSourceAt(s, x, d)
+	{
+		if (s["start"])
+			s["start"](0, x);
+		else
+			s["noteGrainOn"](0, x, d - x);
+	};
+	function stopSource(s)
+	{
+		if (s["stop"])
+			s["stop"](0);
+		else
+			s["noteOff"](0);
+	};
+	function setAudioParam(ap, value, ramp, time)
+	{
+		if (!ap)
+			return;		// iOS is missing some parameters
+		ap["cancelScheduledValues"](0);
+		if (time === 0)
+		{
+			ap["value"] = value;
+			return;
+		}
+		var curTime = context["currentTime"];
+		time += curTime;
+		switch (ramp) {
+		case 0:		// step
+			ap["setValueAtTime"](value, time);
+			break;
+		case 1:		// linear
+			ap["setValueAtTime"](ap["value"], curTime);		// to set what to ramp from
+			ap["linearRampToValueAtTime"](value, time);
+			break;
+		case 2:		// exponential
+			ap["setValueAtTime"](ap["value"], curTime);		// to set what to ramp from
+			ap["exponentialRampToValueAtTime"](value, time);
+			break;
+		}
+	};
+	var filterTypes = ["lowpass", "highpass", "bandpass", "lowshelf", "highshelf", "peaking", "notch", "allpass"];
+	function FilterEffect(type, freq, detune, q, gain, mix)
+	{
+		this.type = "filter";
+		this.params = [type, freq, detune, q, gain, mix];
+		this.inputNode = createGain();
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix;
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - mix;
+		this.filterNode = context["createBiquadFilter"]();
+		if (typeof this.filterNode["type"] === "number")
+			this.filterNode["type"] = type;
+		else
+			this.filterNode["type"] = filterTypes[type];
+		this.filterNode["frequency"]["value"] = freq;
+		if (this.filterNode["detune"])		// iOS 6 doesn't have detune yet
+			this.filterNode["detune"]["value"] = detune;
+		this.filterNode["Q"]["value"] = q;
+		this.filterNode["gain"]["value"] = gain;
+		this.inputNode["connect"](this.filterNode);
+		this.inputNode["connect"](this.dryNode);
+		this.filterNode["connect"](this.wetNode);
+	};
+	FilterEffect.prototype.connectTo = function (node)
+	{
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node);
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node);
+	};
+	FilterEffect.prototype.remove = function ()
+	{
+		this.inputNode["disconnect"]();
+		this.filterNode["disconnect"]();
+		this.wetNode["disconnect"]();
+		this.dryNode["disconnect"]();
+	};
+	FilterEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	FilterEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[4] = value;
+			setAudioParam(this.wetNode["gain"], value, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - value, ramp, time);
+			break;
+		case 1:		// filter frequency
+			this.params[0] = value;
+			setAudioParam(this.filterNode["frequency"], value, ramp, time);
+			break;
+		case 2:		// filter detune
+			this.params[1] = value;
+			setAudioParam(this.filterNode["detune"], value, ramp, time);
+			break;
+		case 3:		// filter Q
+			this.params[2] = value;
+			setAudioParam(this.filterNode["Q"], value, ramp, time);
+			break;
+		case 4:		// filter/delay gain (note value is in dB here)
+			this.params[3] = value;
+			setAudioParam(this.filterNode["gain"], value, ramp, time);
+			break;
+		}
+	};
+	function DelayEffect(delayTime, delayGain, mix)
+	{
+		this.type = "delay";
+		this.params = [delayTime, delayGain, mix];
+		this.inputNode = createGain();
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix;
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - mix;
+		this.mainNode = createGain();
+		this.delayNode = createDelay(delayTime);
+		this.delayNode["delayTime"]["value"] = delayTime;
+		this.delayGainNode = createGain();
+		this.delayGainNode["gain"]["value"] = delayGain;
+		this.inputNode["connect"](this.mainNode);
+		this.inputNode["connect"](this.dryNode);
+		this.mainNode["connect"](this.wetNode);
+		this.mainNode["connect"](this.delayNode);
+		this.delayNode["connect"](this.delayGainNode);
+		this.delayGainNode["connect"](this.mainNode);
+	};
+	DelayEffect.prototype.connectTo = function (node)
+	{
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node);
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node);
+	};
+	DelayEffect.prototype.remove = function ()
+	{
+		this.inputNode["disconnect"]();
+		this.mainNode["disconnect"]();
+		this.delayNode["disconnect"]();
+		this.delayGainNode["disconnect"]();
+		this.wetNode["disconnect"]();
+		this.dryNode["disconnect"]();
+	};
+	DelayEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	DelayEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[2] = value;
+			setAudioParam(this.wetNode["gain"], value, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - value, ramp, time);
+			break;
+		case 4:		// filter/delay gain (note value is passed in dB but needs to be linear here)
+			this.params[1] = dbToLinear(value);
+			setAudioParam(this.delayGainNode["gain"], dbToLinear(value), ramp, time);
+			break;
+		case 5:		// delay time
+			this.params[0] = value;
+			setAudioParam(this.delayNode["delayTime"], value, ramp, time);
+			break;
+		}
+	};
+	function ConvolveEffect(buffer, normalize, mix, src)
+	{
+		this.type = "convolve";
+		this.params = [normalize, mix, src];
+		this.inputNode = createGain();
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix;
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - mix;
+		this.convolveNode = context["createConvolver"]();
+		if (buffer)
+		{
+			this.convolveNode["normalize"] = normalize;
+			this.convolveNode["buffer"] = buffer;
+		}
+		this.inputNode["connect"](this.convolveNode);
+		this.inputNode["connect"](this.dryNode);
+		this.convolveNode["connect"](this.wetNode);
+	};
+	ConvolveEffect.prototype.connectTo = function (node)
+	{
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node);
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node);
+	};
+	ConvolveEffect.prototype.remove = function ()
+	{
+		this.inputNode["disconnect"]();
+		this.convolveNode["disconnect"]();
+		this.wetNode["disconnect"]();
+		this.dryNode["disconnect"]();
+	};
+	ConvolveEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	ConvolveEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[1] = value;
+			setAudioParam(this.wetNode["gain"], value, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - value, ramp, time);
+			break;
+		}
+	};
+	function FlangerEffect(delay, modulation, freq, feedback, mix)
+	{
+		this.type = "flanger";
+		this.params = [delay, modulation, freq, feedback, mix];
+		this.inputNode = createGain();
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - (mix / 2);
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix / 2;
+		this.feedbackNode = createGain();
+		this.feedbackNode["gain"]["value"] = feedback;
+		this.delayNode = createDelay(delay + modulation);
+		this.delayNode["delayTime"]["value"] = delay;
+		this.oscNode = context["createOscillator"]();
+		this.oscNode["frequency"]["value"] = freq;
+		this.oscGainNode = createGain();
+		this.oscGainNode["gain"]["value"] = modulation;
+		this.inputNode["connect"](this.delayNode);
+		this.inputNode["connect"](this.dryNode);
+		this.delayNode["connect"](this.wetNode);
+		this.delayNode["connect"](this.feedbackNode);
+		this.feedbackNode["connect"](this.delayNode);
+		this.oscNode["connect"](this.oscGainNode);
+		this.oscGainNode["connect"](this.delayNode["delayTime"]);
+		startSource(this.oscNode);
+	};
+	FlangerEffect.prototype.connectTo = function (node)
+	{
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node);
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node);
+	};
+	FlangerEffect.prototype.remove = function ()
+	{
+		this.inputNode["disconnect"]();
+		this.delayNode["disconnect"]();
+		this.oscNode["disconnect"]();
+		this.oscGainNode["disconnect"]();
+		this.dryNode["disconnect"]();
+		this.wetNode["disconnect"]();
+		this.feedbackNode["disconnect"]();
+	};
+	FlangerEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	FlangerEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[4] = value;
+			setAudioParam(this.wetNode["gain"], value / 2, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - (value / 2), ramp, time);
+			break;
+		case 6:		// modulation
+			this.params[1] = value / 1000;
+			setAudioParam(this.oscGainNode["gain"], value / 1000, ramp, time);
+			break;
+		case 7:		// modulation frequency
+			this.params[2] = value;
+			setAudioParam(this.oscNode["frequency"], value, ramp, time);
+			break;
+		case 8:		// feedback
+			this.params[3] = value / 100;
+			setAudioParam(this.feedbackNode["gain"], value / 100, ramp, time);
+			break;
+		}
+	};
+	function PhaserEffect(freq, detune, q, modulation, modfreq, mix)
+	{
+		this.type = "phaser";
+		this.params = [freq, detune, q, modulation, modfreq, mix];
+		this.inputNode = createGain();
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - (mix / 2);
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix / 2;
+		this.filterNode = context["createBiquadFilter"]();
+		if (typeof this.filterNode["type"] === "number")
+			this.filterNode["type"] = 7;	// all-pass
+		else
+			this.filterNode["type"] = "allpass";
+		this.filterNode["frequency"]["value"] = freq;
+		if (this.filterNode["detune"])		// iOS 6 doesn't have detune yet
+			this.filterNode["detune"]["value"] = detune;
+		this.filterNode["Q"]["value"] = q;
+		this.oscNode = context["createOscillator"]();
+		this.oscNode["frequency"]["value"] = modfreq;
+		this.oscGainNode = createGain();
+		this.oscGainNode["gain"]["value"] = modulation;
+		this.inputNode["connect"](this.filterNode);
+		this.inputNode["connect"](this.dryNode);
+		this.filterNode["connect"](this.wetNode);
+		this.oscNode["connect"](this.oscGainNode);
+		this.oscGainNode["connect"](this.filterNode["frequency"]);
+		startSource(this.oscNode);
+	};
+	PhaserEffect.prototype.connectTo = function (node)
+	{
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node);
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node);
+	};
+	PhaserEffect.prototype.remove = function ()
+	{
+		this.inputNode["disconnect"]();
+		this.filterNode["disconnect"]();
+		this.oscNode["disconnect"]();
+		this.oscGainNode["disconnect"]();
+		this.dryNode["disconnect"]();
+		this.wetNode["disconnect"]();
+	};
+	PhaserEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	PhaserEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[5] = value;
+			setAudioParam(this.wetNode["gain"], value / 2, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - (value / 2), ramp, time);
+			break;
+		case 1:		// filter frequency
+			this.params[0] = value;
+			setAudioParam(this.filterNode["frequency"], value, ramp, time);
+			break;
+		case 2:		// filter detune
+			this.params[1] = value;
+			setAudioParam(this.filterNode["detune"], value, ramp, time);
+			break;
+		case 3:		// filter Q
+			this.params[2] = value;
+			setAudioParam(this.filterNode["Q"], value, ramp, time);
+			break;
+		case 6:		// modulation
+			this.params[3] = value;
+			setAudioParam(this.oscGainNode["gain"], value, ramp, time);
+			break;
+		case 7:		// modulation frequency
+			this.params[4] = value;
+			setAudioParam(this.oscNode["frequency"], value, ramp, time);
+			break;
+		}
+	};
+	function GainEffect(g)
+	{
+		this.type = "gain";
+		this.params = [g];
+		this.node = createGain();
+		this.node["gain"]["value"] = g;
+	};
+	GainEffect.prototype.connectTo = function (node_)
+	{
+		this.node["disconnect"]();
+		this.node["connect"](node_);
+	};
+	GainEffect.prototype.remove = function ()
+	{
+		this.node["disconnect"]();
+	};
+	GainEffect.prototype.getInputNode = function ()
+	{
+		return this.node;
+	};
+	GainEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 4:		// gain
+			this.params[0] = dbToLinear(value);
+			setAudioParam(this.node["gain"], dbToLinear(value), ramp, time);
+			break;
+		}
+	};
+	function TremoloEffect(freq, mix)
+	{
+		this.type = "tremolo";
+		this.params = [freq, mix];
+		this.node = createGain();
+		this.node["gain"]["value"] = 1 - (mix / 2);
+		this.oscNode = context["createOscillator"]();
+		this.oscNode["frequency"]["value"] = freq;
+		this.oscGainNode = createGain();
+		this.oscGainNode["gain"]["value"] = mix / 2;
+		this.oscNode["connect"](this.oscGainNode);
+		this.oscGainNode["connect"](this.node["gain"]);
+		startSource(this.oscNode);
+	};
+	TremoloEffect.prototype.connectTo = function (node_)
+	{
+		this.node["disconnect"]();
+		this.node["connect"](node_);
+	};
+	TremoloEffect.prototype.remove = function ()
+	{
+		this.oscNode["disconnect"]();
+		this.oscGainNode["disconnect"]();
+		this.node["disconnect"]();
+	};
+	TremoloEffect.prototype.getInputNode = function ()
+	{
+		return this.node;
+	};
+	TremoloEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[1] = value;
+			setAudioParam(this.node["gain"]["value"], 1 - (value / 2), ramp, time);
+			setAudioParam(this.oscGainNode["gain"]["value"], value / 2, ramp, time);
+			break;
+		case 7:		// modulation frequency
+			this.params[0] = value;
+			setAudioParam(this.oscNode["frequency"], value, ramp, time);
+			break;
+		}
+	};
+	function RingModulatorEffect(freq, mix)
+	{
+		this.type = "ringmod";
+		this.params = [freq, mix];
+		this.inputNode = createGain();
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix;
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - mix;
+		this.ringNode = createGain();
+		this.ringNode["gain"]["value"] = 0;
+		this.oscNode = context["createOscillator"]();
+		this.oscNode["frequency"]["value"] = freq;
+		this.oscNode["connect"](this.ringNode["gain"]);
+		startSource(this.oscNode);
+		this.inputNode["connect"](this.ringNode);
+		this.inputNode["connect"](this.dryNode);
+		this.ringNode["connect"](this.wetNode);
+	};
+	RingModulatorEffect.prototype.connectTo = function (node_)
+	{
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node_);
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node_);
+	};
+	RingModulatorEffect.prototype.remove = function ()
+	{
+		this.oscNode["disconnect"]();
+		this.ringNode["disconnect"]();
+		this.inputNode["disconnect"]();
+		this.wetNode["disconnect"]();
+		this.dryNode["disconnect"]();
+	};
+	RingModulatorEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	RingModulatorEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[1] = value;
+			setAudioParam(this.wetNode["gain"], value, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - value, ramp, time);
+			break;
+		case 7:		// modulation frequency
+			this.params[0] = value;
+			setAudioParam(this.oscNode["frequency"], value, ramp, time);
+			break;
+		}
+	};
+	function DistortionEffect(threshold, headroom, drive, makeupgain, mix)
+	{
+		this.type = "distortion";
+		this.params = [threshold, headroom, drive, makeupgain, mix];
+		this.inputNode = createGain();
+		this.preGain = createGain();
+		this.postGain = createGain();
+		this.setDrive(drive, dbToLinear_nocap(makeupgain));
+		this.wetNode = createGain();
+		this.wetNode["gain"]["value"] = mix;
+		this.dryNode = createGain();
+		this.dryNode["gain"]["value"] = 1 - mix;
+		this.waveShaper = context["createWaveShaper"]();
+		this.curve = new Float32Array(65536);
+		this.generateColortouchCurve(threshold, headroom);
+		this.waveShaper.curve = this.curve;
+		this.inputNode["connect"](this.preGain);
+		this.inputNode["connect"](this.dryNode);
+		this.preGain["connect"](this.waveShaper);
+		this.waveShaper["connect"](this.postGain);
+		this.postGain["connect"](this.wetNode);
+	};
+	DistortionEffect.prototype.setDrive = function (drive, makeupgain)
+	{
+		if (drive < 0.01)
+			drive = 0.01;
+		this.preGain["gain"]["value"] = drive;
+		this.postGain["gain"]["value"] = Math.pow(1 / drive, 0.6) * makeupgain;
+	};
+	function e4(x, k)
+	{
+		return 1.0 - Math.exp(-k * x);
+	}
+	DistortionEffect.prototype.shape = function (x, linearThreshold, linearHeadroom)
+	{
+		var maximum = 1.05 * linearHeadroom * linearThreshold;
+		var kk = (maximum - linearThreshold);
+		var sign = x < 0 ? -1 : +1;
+		var absx = x < 0 ? -x : x;
+		var shapedInput = absx < linearThreshold ? absx : linearThreshold + kk * e4(absx - linearThreshold, 1.0 / kk);
+		shapedInput *= sign;
+		return shapedInput;
+	};
+	DistortionEffect.prototype.generateColortouchCurve = function (threshold, headroom)
+	{
+		var linearThreshold = dbToLinear_nocap(threshold);
+		var linearHeadroom = dbToLinear_nocap(headroom);
+		var n = 65536;
+		var n2 = n / 2;
+		var x = 0;
+		for (var i = 0; i < n2; ++i) {
+			x = i / n2;
+			x = this.shape(x, linearThreshold, linearHeadroom);
+			this.curve[n2 + i] = x;
+			this.curve[n2 - i - 1] = -x;
+		}
+	};
+	DistortionEffect.prototype.connectTo = function (node)
+	{
+		this.wetNode["disconnect"]();
+		this.wetNode["connect"](node);
+		this.dryNode["disconnect"]();
+		this.dryNode["connect"](node);
+	};
+	DistortionEffect.prototype.remove = function ()
+	{
+		this.inputNode["disconnect"]();
+		this.preGain["disconnect"]();
+		this.waveShaper["disconnect"]();
+		this.postGain["disconnect"]();
+		this.wetNode["disconnect"]();
+		this.dryNode["disconnect"]();
+	};
+	DistortionEffect.prototype.getInputNode = function ()
+	{
+		return this.inputNode;
+	};
+	DistortionEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+		switch (param) {
+		case 0:		// mix
+			value = value / 100;
+			if (value < 0) value = 0;
+			if (value > 1) value = 1;
+			this.params[4] = value;
+			setAudioParam(this.wetNode["gain"], value, ramp, time);
+			setAudioParam(this.dryNode["gain"], 1 - value, ramp, time);
+			break;
+		}
+	};
+	function CompressorEffect(threshold, knee, ratio, attack, release)
+	{
+		this.type = "compressor";
+		this.params = [threshold, knee, ratio, attack, release];
+		this.node = context["createDynamicsCompressor"]();
+		this.node["threshold"]["value"] = threshold;
+		this.node["knee"]["value"] = knee;
+		this.node["ratio"]["value"] = ratio;
+		this.node["attack"]["value"] = attack;
+		this.node["release"]["value"] = release;
+	};
+	CompressorEffect.prototype.connectTo = function (node_)
+	{
+		this.node["disconnect"]();
+		this.node["connect"](node_);
+	};
+	CompressorEffect.prototype.remove = function ()
+	{
+		this.node["disconnect"]();
+	};
+	CompressorEffect.prototype.getInputNode = function ()
+	{
+		return this.node;
+	};
+	CompressorEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+	};
+	function AnalyserEffect(fftSize, smoothing)
+	{
+		this.type = "analyser";
+		this.params = [fftSize, smoothing];
+		this.node = context["createAnalyser"]();
+		this.node["fftSize"] = fftSize;
+		this.node["smoothingTimeConstant"] = smoothing;
+		this.freqBins = new Float32Array(this.node["frequencyBinCount"]);
+		this.signal = new Uint8Array(fftSize);
+		this.peak = 0;
+		this.rms = 0;
+	};
+	AnalyserEffect.prototype.tick = function ()
+	{
+		this.node["getFloatFrequencyData"](this.freqBins);
+		this.node["getByteTimeDomainData"](this.signal);
+		var fftSize = this.node["fftSize"];
+		var i = 0;
+		this.peak = 0;
+		var rmsSquaredSum = 0;
+		var s = 0;
+		for ( ; i < fftSize; i++)
+		{
+			s = (this.signal[i] - 128) / 128;
+			if (s < 0)
+				s = -s;
+			if (this.peak < s)
+				this.peak = s;
+			rmsSquaredSum += s * s;
+		}
+		this.peak = linearToDb(this.peak);
+		this.rms = linearToDb(Math.sqrt(rmsSquaredSum / fftSize));
+	};
+	AnalyserEffect.prototype.connectTo = function (node_)
+	{
+		this.node["disconnect"]();
+		this.node["connect"](node_);
+	};
+	AnalyserEffect.prototype.remove = function ()
+	{
+		this.node["disconnect"]();
+	};
+	AnalyserEffect.prototype.getInputNode = function ()
+	{
+		return this.node;
+	};
+	AnalyserEffect.prototype.setParam = function(param, value, ramp, time)
+	{
+	};
+	var OT_POS_SAMPLES = 4;
+	function ObjectTracker()
+	{
+		this.obj = null;
+		this.loadUid = 0;
+		this.speeds = [];
+		this.lastX = 0;
+		this.lastY = 0;
+		this.moveAngle = 0;
+	};
+	ObjectTracker.prototype.setObject = function (obj_)
+	{
+		this.obj = obj_;
+		if (this.obj)
+		{
+			this.lastX = this.obj.x;
+			this.lastY = this.obj.y;
+		}
+		this.speeds.length = 0;
+	};
+	ObjectTracker.prototype.hasObject = function ()
+	{
+		return !!this.obj;
+	};
+	ObjectTracker.prototype.tick = function (dt)
+	{
+		if (!this.obj)
+			return;
+		this.moveAngle = cr.angleTo(this.lastX, this.lastY, this.obj.x, this.obj.y);
+		var s = cr.distanceTo(this.lastX, this.lastY, this.obj.x, this.obj.y) / dt;
+		if (this.speeds.length < OT_POS_SAMPLES)
+			this.speeds.push(s);
+		else
+		{
+			this.speeds.shift();
+			this.speeds.push(s);
+		}
+		this.lastX = this.obj.x;
+		this.lastY = this.obj.y;
+	};
+	ObjectTracker.prototype.getSpeed = function ()
+	{
+		if (!this.speeds.length)
+			return 0;
+		var i, len, sum = 0;
+		for (i = 0, len = this.speeds.length; i < len; i++)
+		{
+			sum += this.speeds[i];
+		}
+		return sum / this.speeds.length;
+	};
+	ObjectTracker.prototype.getVelocityX = function ()
+	{
+		return Math.cos(this.moveAngle) * this.getSpeed();
+	};
+	ObjectTracker.prototype.getVelocityY = function ()
+	{
+		return Math.sin(this.moveAngle) * this.getSpeed();
+	};
+	var iOShadtouch = false;	// has had touch input on iOS to work around web audio API muting
+	function C2AudioBuffer(src_, is_music)
+	{
+		this.src = src_;
+		this.myapi = api;
+		this.is_music = is_music;
+		this.added_end_listener = false;
+		var self = this;
+		this.outNode = null;
+		this.mediaSourceNode = null;
+		this.panWhenReady = [];		// for web audio API positioned sounds
+		this.seekWhenReady = 0;
+		this.pauseWhenReady = false;
+		if (api === API_WEBAUDIO && is_music && !audRuntime.isiOS)
+		{
+			this.myapi = API_HTML5;
+			this.outNode = createGain();
+		}
+		this.bufferObject = null;
+		var request;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (is_music && audRuntime.isCocoonJs)
+				CocoonJS["App"]["markAsMusic"](src_);
+			this.bufferObject = new Audio();
+			if (api === API_WEBAUDIO)
+			{
+				this.bufferObject.addEventListener("canplay", function ()
+				{
+					self.mediaSourceNode = context["createMediaElementSource"](self.bufferObject);
+					self.mediaSourceNode["connect"](self.outNode);
+				});
+			}
+			this.bufferObject.autoplay = false;	// this is only a source buffer, not an instance
+			this.bufferObject.preload = "auto";
+			this.bufferObject.src = src_;
+			break;
+		case API_WEBAUDIO:
+			request = new XMLHttpRequest();
+			request.open("GET", src_, true);
+			request.responseType = "arraybuffer";
+			request.onload = function () {
+				if (context["decodeAudioData"])
+				{
+					context["decodeAudioData"](request.response, function (buffer) {
+							self.bufferObject = buffer;
+							var p, i, len, a;
+							if (!cr.is_undefined(self.playTagWhenReady))
+							{
+								if (self.panWhenReady.length)
+								{
+									for (i = 0, len = self.panWhenReady.length; i < len; i++)
+									{
+										p = self.panWhenReady[i];
+										a = new C2AudioInstance(self, p.thistag);
+										a.setPannerEnabled(true);
+										if (typeof p.objUid !== "undefined")
+										{
+											p.obj = audRuntime.getObjectByUID(p.objUid);
+											if (!p.obj)
+												continue;
+										}
+										if (p.obj)
+										{
+											a.setPan(p.obj.x, p.obj.y, cr.to_degrees(p.obj.angle), p.ia, p.oa, p.og);
+											a.setObject(p.obj);
+										}
+										else
+										{
+											a.setPan(p.x, p.y, p.a, p.ia, p.oa, p.og);
+										}
+										a.play(self.loopWhenReady, self.volumeWhenReady, self.seekWhenReady);
+										if (self.pauseWhenReady)
+											a.pause();
+										audioInstances.push(a);
+									}
+									self.panWhenReady.length = 0;
+								}
+								else
+								{
+									a = new C2AudioInstance(self, self.playTagWhenReady);
+									a.play(self.loopWhenReady, self.volumeWhenReady, self.seekWhenReady);
+									if (self.pauseWhenReady)
+										a.pause();
+									audioInstances.push(a);
+								}
+							}
+							else if (!cr.is_undefined(self.convolveWhenReady))
+							{
+								var convolveNode = self.convolveWhenReady.convolveNode;
+								convolveNode["normalize"] = self.normalizeWhenReady;
+								convolveNode["buffer"] = buffer;
+							}
+					});
+				}
+				else
+				{
+					self.bufferObject = context["createBuffer"](request.response, false);
+					if (!cr.is_undefined(self.playTagWhenReady))
+					{
+						var a = new C2AudioInstance(self, self.playTagWhenReady);
+						a.play(self.loopWhenReady, self.volumeWhenReady, self.seekWhenReady);
+						if (self.pauseWhenReady)
+							a.pause();
+						audioInstances.push(a);
+					}
+					else if (!cr.is_undefined(self.convolveWhenReady))
+					{
+						var convolveNode = self.convolveWhenReady.convolveNode;
+						convolveNode["normalize"] = self.normalizeWhenReady;
+						convolveNode["buffer"] = self.bufferObject;
+					}
+				}
+			};
+			request.send();
+			break;
+		case API_PHONEGAP:
+			this.bufferObject = true;
+			break;
+		case API_APPMOBI:
+			this.bufferObject = true;
+			break;
+		}
+	};
+	C2AudioBuffer.prototype.isLoaded = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			return this.bufferObject["readyState"] === 4;	// HAVE_ENOUGH_DATA
+		case API_WEBAUDIO:
+			return !!this.bufferObject;			// null until AJAX request completes
+		case API_PHONEGAP:
+			return true;
+		case API_APPMOBI:
+			return true;
+		}
+		return false;
+	};
+	function C2AudioInstance(buffer_, tag_)
+	{
+		var self = this;
+		this.tag = tag_;
+		this.fresh = true;
+		this.stopped = true;
+		this.src = buffer_.src;
+		this.buffer = buffer_;
+		this.myapi = api;
+		this.is_music = buffer_.is_music;
+		this.playbackRate = 1;
+		this.pgended = true;			// for PhoneGap only: ended flag
+		this.resume_me = false;			// make sure resumes when leaving suspend
+		this.is_paused = false;
+		this.resume_position = 0;		// for web audio api to resume from correct playback position
+		this.looping = false;
+		this.is_muted = false;
+		this.is_silent = false;
+		this.volume = 1;
+		this.mutevol = 1;
+		this.startTime = audRuntime.kahanTime.sum;
+		this.gainNode = null;
+		this.pannerNode = null;
+		this.pannerEnabled = false;
+		this.objectTracker = null;
+		this.panX = 0;
+		this.panY = 0;
+		this.panAngle = 0;
+		this.panConeInner = 0;
+		this.panConeOuter = 0;
+		this.panConeOuterGain = 0;
+		this.instanceObject = null;
+		var add_end_listener = false;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.is_music)
+			{
+				this.instanceObject = buffer_.bufferObject;
+				add_end_listener = !buffer_.added_end_listener;
+				buffer_.added_end_listener = true;
+			}
+			else
+			{
+				this.instanceObject = new Audio();
+				this.instanceObject.autoplay = false;
+				this.instanceObject.src = buffer_.bufferObject.src;
+				add_end_listener = true;
+			}
+			if (add_end_listener)
+			{
+				this.instanceObject.addEventListener('ended', function () {
+						audTag = self.tag;
+						self.stopped = true;
+						audRuntime.trigger(cr.plugins_.Audio.prototype.cnds.OnEnded, audInst);
+				});
+			}
+			break;
+		case API_WEBAUDIO:
+			this.gainNode = createGain();
+			this.gainNode["connect"](getDestinationForTag(tag_));
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				if (buffer_.bufferObject)
+				{
+					this.instanceObject = context["createBufferSource"]();
+					this.instanceObject["buffer"] = buffer_.bufferObject;
+					this.instanceObject["connect"](this.gainNode);
+				}
+			}
+			else
+			{
+				this.instanceObject = this.buffer.bufferObject;		// reference the audio element
+				this.buffer.outNode["connect"](this.gainNode);
+			}
+			break;
+		case API_PHONEGAP:
+			this.instanceObject = new window["Media"](appPath + this.src, null, null, function (status) {
+					if (status === window["Media"]["MEDIA_STOPPED"])
+					{
+						self.pgended = true;
+						self.stopped = true;
+						audTag = self.tag;
+						audRuntime.trigger(cr.plugins_.Audio.prototype.cnds.OnEnded, audInst);
+					}
+			});
+			break;
+		case API_APPMOBI:
+			this.instanceObject = true;
+			break;
+		}
+	};
+	C2AudioInstance.prototype.hasEnded = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			return this.instanceObject.ended;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				if (!this.fresh && !this.stopped && this.instanceObject["loop"])
+					return false;
+				if (this.is_paused)
+					return false;
+				return (audRuntime.kahanTime.sum - this.startTime) > this.buffer.bufferObject["duration"];
+			}
+			else
+				return this.instanceObject.ended;
+		case API_PHONEGAP:
+			return this.pgended;
+		case API_APPMOBI:
+			true;	// recycling an AppMobi sound does not matter because it will just do another throwaway playSound
+		}
+		return true;
+	};
+	C2AudioInstance.prototype.canBeRecycled = function ()
+	{
+		if (this.fresh || this.stopped)
+			return true;		// not yet used or is not playing
+		return this.hasEnded();
+	};
+	C2AudioInstance.prototype.setPannerEnabled = function (enable_)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		if (!this.pannerEnabled && enable_)
+		{
+			if (!this.pannerNode)
+			{
+				this.pannerNode = context["createPanner"]();
+				if (typeof this.pannerNode["panningModel"] === "number")
+					this.pannerNode["panningModel"] = panningModel;
+				else
+					this.pannerNode["panningModel"] = ["equalpower", "HRTF", "soundfield"][panningModel];
+				if (typeof this.pannerNode["distanceModel"] === "number")
+					this.pannerNode["distanceModel"] = distanceModel;
+				else
+					this.pannerNode["distanceModel"] = ["linear", "inverse", "exponential"][distanceModel];
+				this.pannerNode["refDistance"] = refDistance;
+				this.pannerNode["maxDistance"] = maxDistance;
+				this.pannerNode["rolloffFactor"] = rolloffFactor;
+			}
+			this.gainNode["disconnect"]();
+			this.gainNode["connect"](this.pannerNode);
+			this.pannerNode["connect"](getDestinationForTag(this.tag));
+			this.pannerEnabled = true;
+		}
+		else if (this.pannerEnabled && !enable_)
+		{
+			this.pannerNode["disconnect"]();
+			this.gainNode["disconnect"]();
+			this.gainNode["connect"](getDestinationForTag(this.tag));
+			this.pannerEnabled = false;
+		}
+	};
+	C2AudioInstance.prototype.setPan = function (x, y, angle, innerangle, outerangle, outergain)
+	{
+		if (!this.pannerEnabled || api !== API_WEBAUDIO)
+			return;
+		this.pannerNode["setPosition"](x, y, 0);
+		this.pannerNode["setOrientation"](Math.cos(cr.to_radians(angle)), Math.sin(cr.to_radians(angle)), 0);
+		this.pannerNode["coneInnerAngle"] = innerangle;
+		this.pannerNode["coneOuterAngle"] = outerangle;
+		this.pannerNode["coneOuterGain"] = outergain;
+		this.panX = x;
+		this.panY = y;
+		this.panAngle = angle;
+		this.panConeInner = innerangle;
+		this.panConeOuter = outerangle;
+		this.panConeOuterGain = outergain;
+	};
+	C2AudioInstance.prototype.setObject = function (o)
+	{
+		if (!this.pannerEnabled || api !== API_WEBAUDIO)
+			return;
+		if (!this.objectTracker)
+			this.objectTracker = new ObjectTracker();
+		this.objectTracker.setObject(o);
+	};
+	C2AudioInstance.prototype.tick = function (dt)
+	{
+		if (!this.pannerEnabled || api !== API_WEBAUDIO || !this.objectTracker || !this.objectTracker.hasObject() || !this.isPlaying())
+		{
+			return;
+		}
+		this.objectTracker.tick(dt);
+		this.pannerNode["setPosition"](this.objectTracker.obj.x, this.objectTracker.obj.y, 0);
+		var a = 0;
+		if (typeof this.objectTracker.obj.angle !== "undefined")
+		{
+			a = this.objectTracker.obj.angle;
+			this.pannerNode["setOrientation"](Math.cos(a), Math.sin(a), 0);
+		}
+		this.pannerNode["setVelocity"](this.objectTracker.getVelocityX(), this.objectTracker.getVelocityY(), 0);
+	};
+	C2AudioInstance.prototype.play = function (looping, vol, fromPosition)
+	{
+		var instobj = this.instanceObject;
+		this.looping = looping;
+		this.volume = vol;
+		var seekPos = fromPosition || 0;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (instobj.playbackRate !== 1.0)
+				instobj.playbackRate = 1.0;
+			if (instobj.volume !== vol * masterVolume)
+				instobj.volume = vol * masterVolume;
+			if (instobj.loop !== looping)
+				instobj.loop = looping;
+			if (instobj.muted)
+				instobj.muted = false;
+			if (instobj.currentTime !== seekPos)
+			{
+				try {
+					instobj.currentTime = seekPos;
+				}
+				catch (err)
+				{
+;
+				}
+			}
+			this.instanceObject.play();
+			break;
+		case API_WEBAUDIO:
+			this.muted = false;
+			this.mutevol = 1;
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				if (!this.fresh)
+				{
+					this.instanceObject = context["createBufferSource"]();
+					this.instanceObject["buffer"] = this.buffer.bufferObject;
+					this.instanceObject["connect"](this.gainNode);
+				}
+				this.instanceObject.loop = looping;
+				this.gainNode["gain"]["value"] = vol * masterVolume;
+				if (seekPos === 0)
+					startSource(this.instanceObject);
+				else
+					startSourceAt(this.instanceObject, seekPos, this.getDuration());
+			}
+			else
+			{
+				if (instobj.playbackRate !== 1.0)
+					instobj.playbackRate = 1.0;
+				if (instobj.loop !== looping)
+					instobj.loop = looping;
+				this.gainNode["gain"]["value"] = vol * masterVolume;
+				if (instobj.currentTime !== seekPos)
+				{
+					try {
+						instobj.currentTime = seekPos;
+					}
+					catch (err)
+					{
+;
+					}
+				}
+				instobj.play();
+			}
+			break;
+		case API_PHONEGAP:
+			if ((!this.fresh && this.stopped) || seekPos !== 0)
+				instobj["seekTo"](seekPos);
+			instobj["play"]();
+			this.pgended = false;
+			break;
+		case API_APPMOBI:
+			if (audRuntime.isDirectCanvas)
+				AppMobi["context"]["playSound"](this.src);
+			else
+				AppMobi["player"]["playSound"](this.src);
+			break;
+		}
+		this.playbackRate = 1;
+		this.startTime = audRuntime.kahanTime.sum - seekPos;
+		this.fresh = false;
+		this.stopped = false;
+		this.is_paused = false;
+	};
+	C2AudioInstance.prototype.stop = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (!this.instanceObject.paused)
+				this.instanceObject.pause();
+			break;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+				stopSource(this.instanceObject);
+			else
+			{
+				if (!this.instanceObject.paused)
+					this.instanceObject.pause();
+			}
+			break;
+		case API_PHONEGAP:
+			this.instanceObject["stop"]();
+			break;
+		case API_APPMOBI:
+			break;
+		}
+		this.stopped = true;
+		this.is_paused = false;
+	};
+	C2AudioInstance.prototype.pause = function ()
+	{
+		if (this.fresh || this.stopped || this.hasEnded() || this.is_paused)
+			return;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (!this.instanceObject.paused)
+				this.instanceObject.pause();
+			break;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				this.resume_position = this.getPlaybackTime();
+				if (this.looping)
+					this.resume_position = this.resume_position % this.getDuration();
+				stopSource(this.instanceObject);
+			}
+			else
+			{
+				if (!this.instanceObject.paused)
+					this.instanceObject.pause();
+			}
+			break;
+		case API_PHONEGAP:
+			this.instanceObject["pause"]();
+			break;
+		case API_APPMOBI:
+			break;
+		}
+		this.is_paused = true;
+	};
+	C2AudioInstance.prototype.resume = function ()
+	{
+		if (this.fresh || this.stopped || this.hasEnded() || !this.is_paused)
+			return;
+		switch (this.myapi) {
+		case API_HTML5:
+			this.instanceObject.play();
+			break;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				this.instanceObject = context["createBufferSource"]();
+				this.instanceObject["buffer"] = this.buffer.bufferObject;
+				this.instanceObject["connect"](this.gainNode);
+				this.instanceObject.loop = this.looping;
+				this.gainNode["gain"]["value"] = masterVolume * this.volume * this.mutevol;
+				this.startTime = audRuntime.kahanTime.sum - this.resume_position;
+				startSourceAt(this.instanceObject, this.resume_position, this.getDuration());
+			}
+			else
+			{
+				this.instanceObject.play();
+			}
+			break;
+		case API_PHONEGAP:
+			this.instanceObject["play"]();
+			break;
+		case API_APPMOBI:
+			break;
+		}
+		this.is_paused = false;
+	};
+	C2AudioInstance.prototype.seek = function (pos)
+	{
+		if (this.fresh || this.stopped || this.hasEnded())
+			return;
+		switch (this.myapi) {
+		case API_HTML5:
+			try {
+				this.instanceObject.currentTime = pos;
+			}
+			catch (e) {}
+			break;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				if (this.is_paused)
+					this.resume_position = pos;
+				else
+				{
+					this.pause();
+					this.resume_position = pos;
+					this.resume();
+				}
+			}
+			else
+			{
+				try {
+					this.instanceObject.currentTime = pos;
+				}
+				catch (e) {}
+			}
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.reconnect = function (toNode)
+	{
+		if (this.myapi !== API_WEBAUDIO)
+			return;
+		if (this.pannerEnabled)
+		{
+			this.pannerNode["disconnect"]();
+			this.pannerNode["connect"](toNode);
+		}
+		else
+		{
+			this.gainNode["disconnect"]();
+			this.gainNode["connect"](toNode);
+		}
+	};
+	C2AudioInstance.prototype.getDuration = function ()
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (typeof this.instanceObject.duration !== "undefined")
+				return this.instanceObject.duration;
+			else
+				return 0;
+		case API_WEBAUDIO:
+			return this.buffer.bufferObject["duration"];
+		case API_PHONEGAP:
+			return this.instanceObject["getDuration"]();
+		case API_APPMOBI:
+			return 0;
+		}
+		return 0;
+	};
+	C2AudioInstance.prototype.getPlaybackTime = function ()
+	{
+		var duration = this.getDuration();
+		var ret = 0;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (typeof this.instanceObject.currentTime !== "undefined")
+				ret = this.instanceObject.currentTime;
+			break;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				if (this.is_paused)
+					return this.resume_position;
+				else
+					ret = audRuntime.kahanTime.sum - this.startTime;
+			}
+			else if (typeof this.instanceObject.currentTime !== "undefined")
+				ret = this.instanceObject.currentTime;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+		if (!this.looping && ret > duration)
+			ret = duration;
+		return ret;
+	};
+	C2AudioInstance.prototype.isPlaying = function ()
+	{
+		return !this.is_paused && !this.fresh && !this.stopped && !this.hasEnded();
+	};
+	C2AudioInstance.prototype.setVolume = function (v)
+	{
+		this.volume = v;
+		this.updateVolume();
+	};
+	C2AudioInstance.prototype.updateVolume = function ()
+	{
+		var volToSet = this.volume * masterVolume;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.volume && this.instanceObject.volume !== volToSet)
+				this.instanceObject.volume = volToSet;
+			break;
+		case API_WEBAUDIO:
+			this.gainNode["gain"]["value"] = volToSet * this.mutevol;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.getVolume = function ()
+	{
+		return this.volume;
+	};
+	C2AudioInstance.prototype.doSetMuted = function (m)
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.muted !== !!m)
+				this.instanceObject.muted = !!m;
+			break;
+		case API_WEBAUDIO:
+			this.mutevol = (m ? 0 : 1);
+			this.gainNode["gain"]["value"] = masterVolume * this.volume * this.mutevol;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setMuted = function (m)
+	{
+		this.is_muted = !!m;
+		this.doSetMuted(this.is_muted || this.is_silent);
+	};
+	C2AudioInstance.prototype.setSilent = function (m)
+	{
+		this.is_silent = !!m;
+		this.doSetMuted(this.is_muted || this.is_silent);
+	};
+	C2AudioInstance.prototype.setLooping = function (l)
+	{
+		this.looping = l;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.loop !== !!l)
+				this.instanceObject.loop = !!l;
+			break;
+		case API_WEBAUDIO:
+			if (this.instanceObject.loop !== !!l)
+				this.instanceObject.loop = !!l;
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setPlaybackRate = function (r)
+	{
+		this.playbackRate = r;
+		this.updatePlaybackRate();
+	};
+	C2AudioInstance.prototype.updatePlaybackRate = function ()
+	{
+		var r = this.playbackRate;
+		if ((timescale_mode === 1 && !this.is_music) || timescale_mode === 2)
+			r *= audRuntime.timescale;
+		switch (this.myapi) {
+		case API_HTML5:
+			if (this.instanceObject.playbackRate !== r)
+				this.instanceObject.playbackRate = r;
+			break;
+		case API_WEBAUDIO:
+			if (this.buffer.myapi === API_WEBAUDIO)
+			{
+				if (this.instanceObject["playbackRate"]["value"] !== r)
+					this.instanceObject["playbackRate"]["value"] = r;
+			}
+			else
+			{
+				if (this.instanceObject.playbackRate !== r)
+					this.instanceObject.playbackRate = r;
+			}
+			break;
+		case API_PHONEGAP:
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	C2AudioInstance.prototype.setSuspended = function (s)
+	{
+		switch (this.myapi) {
+		case API_HTML5:
+			if (s)
+			{
+				if (this.isPlaying())
+				{
+					this.instanceObject["pause"]();
+					this.resume_me = true;
+				}
+				else
+					this.resume_me = false;
+			}
+			else
+			{
+				if (this.resume_me)
+					this.instanceObject["play"]();
+			}
+			break;
+		case API_WEBAUDIO:
+			if (s)
+			{
+				if (this.isPlaying())
+				{
+					if (this.buffer.myapi === API_WEBAUDIO)
+					{
+						this.resume_position = this.getPlaybackTime();
+						if (this.looping)
+							this.resume_position = this.resume_position % this.getDuration();
+						stopSource(this.instanceObject);
+					}
+					else
+						this.instanceObject["pause"]();
+					this.resume_me = true;
+				}
+				else
+					this.resume_me = false;
+			}
+			else
+			{
+				if (this.resume_me)
+				{
+					if (this.buffer.myapi === API_WEBAUDIO)
+					{
+						this.instanceObject = context["createBufferSource"]();
+						this.instanceObject["buffer"] = this.buffer.bufferObject;
+						this.instanceObject["connect"](this.gainNode);
+						this.instanceObject.loop = this.looping;
+						this.gainNode["gain"]["value"] = masterVolume * this.volume * this.mutevol;
+						this.startTime = audRuntime.kahanTime.sum - this.resume_position;
+						startSourceAt(this.instanceObject, this.resume_position, this.getDuration());
+					}
+					else
+					{
+						this.instanceObject["play"]();
+					}
+				}
+			}
+			break;
+		case API_PHONEGAP:
+			if (s)
+			{
+				if (this.isPlaying())
+				{
+					this.instanceObject["pause"]();
+					this.resume_me = true;
+				}
+				else
+					this.resume_me = false;
+			}
+			else
+			{
+				if (this.resume_me)
+					this.instanceObject["play"]();
+			}
+			break;
+		case API_APPMOBI:
+			break;
+		}
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+		audRuntime = this.runtime;
+		audInst = this;
+		this.listenerTracker = null;
+		this.listenerZ = -600;
+		context = null;
+		if (typeof AudioContext !== "undefined")
+		{
+			api = API_WEBAUDIO;
+			context = new AudioContext();
+		}
+		else if (typeof webkitAudioContext !== "undefined")
+		{
+			api = API_WEBAUDIO;
+			context = new webkitAudioContext();
+		}
+		if (this.runtime.isiOS && api === API_WEBAUDIO)
+		{
+			document.addEventListener("touchstart", function () {
+				if (iOShadtouch)
+					return;
+				var buffer = context["createBuffer"](1, 1, 22050);
+				var source = context["createBufferSource"]();
+				source["buffer"] = buffer;
+				source["connect"](context["destination"]);
+				startSource(source);
+				iOShadtouch = true;
+			}, true);
+		}
+		if (api !== API_WEBAUDIO)
+		{
+			if (this.runtime.isPhoneGap)
+				api = API_PHONEGAP;
+			else if (this.runtime.isAppMobi)
+				api = API_APPMOBI;
+		}
+		if (api === API_PHONEGAP)
+		{
+			appPath = location.href;
+			var i = appPath.lastIndexOf("/");
+			if (i > -1)
+				appPath = appPath.substr(0, i + 1);
+			appPath = appPath.replace("file://", "");
+		}
+		if (this.runtime.isSafari && this.runtime.isWindows && typeof Audio === "undefined")
+		{
+			alert("It looks like you're using Safari for Windows without Quicktime.  Audio cannot be played until Quicktime is installed.");
+			this.runtime.DestroyInstance(this);
+		}
+		else
+		{
+			if (this.runtime.isDirectCanvas)
+				useOgg = this.runtime.isAndroid;		// AAC on iOS, OGG on Android
+			else
+			{
+				try {
+					useOgg = !!(new Audio().canPlayType('audio/ogg; codecs="vorbis"'));
+				}
+				catch (e)
+				{
+					useOgg = false;
+				}
+			}
+			switch (api) {
+			case API_HTML5:
+;
+				break;
+			case API_WEBAUDIO:
+;
+				break;
+			case API_PHONEGAP:
+;
+				break;
+			case API_APPMOBI:
+;
+				break;
+			default:
+;
+			}
+			this.runtime.tickMe(this);
+		}
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function ()
+	{
+		timescale_mode = this.properties[0];	// 0 = off, 1 = sounds only, 2 = all
+		panningModel = this.properties[1];		// 0 = equalpower, 1 = hrtf, 3 = soundfield
+		distanceModel = this.properties[2];		// 0 = linear, 1 = inverse, 2 = exponential
+		this.listenerZ = -this.properties[3];
+		refDistance = this.properties[4];
+		maxDistance = this.properties[5];
+		rolloffFactor = this.properties[6];
+		this.listenerTracker = new ObjectTracker();
+		if (api === API_WEBAUDIO)
+		{
+			context["listener"]["speedOfSound"] = this.properties[7];
+			context["listener"]["dopplerFactor"] = this.properties[8];
+			context["listener"]["setPosition"](this.runtime.width / 2, this.runtime.height / 2, this.listenerZ);
+			context["listener"]["setOrientation"](0, 0, 1, 0, -1, 0);
+			window["c2OnAudioMicStream"] = function (localMediaStream, tag)
+			{
+				if (micSource)
+					micSource["disconnect"]();
+				micTag = tag.toLowerCase();
+				micSource = context["createMediaStreamSource"](localMediaStream);
+				micSource["connect"](getDestinationForTag(micTag));
+			};
+		}
+		this.runtime.addSuspendCallback(function(s)
+		{
+			audInst.onSuspend(s);
+		});
+		var self = this;
+		this.runtime.addDestroyCallback(function (inst)
+		{
+			self.onInstanceDestroyed(inst);
+		});
+	};
+	instanceProto.onInstanceDestroyed = function (inst)
+	{
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (a.objectTracker)
+			{
+				if (a.objectTracker.obj === inst)
+				{
+					a.objectTracker.obj = null;
+					if (a.pannerEnabled && a.isPlaying() && a.looping)
+						a.stop();
+				}
+			}
+		}
+		if (this.listenerTracker.obj === inst)
+			this.listenerTracker.obj = null;
+	};
+	instanceProto.saveToJSON = function ()
+	{
+		var o = {
+			"silent": silent,
+			"masterVolume": masterVolume,
+			"listenerZ": this.listenerZ,
+			"listenerUid": this.listenerTracker.hasObject() ? this.listenerTracker.obj.uid : -1,
+			"playing": [],
+			"effects": {}
+		};
+		var playingarr = o["playing"];
+		var i, len, a, d, p, panobj, playbackTime;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (!a.isPlaying())
+				continue;		// no need to save stopped sounds
+			playbackTime = a.getPlaybackTime();
+			if (a.looping)
+				playbackTime = playbackTime % a.getDuration();
+			d = {
+				"tag": a.tag,
+				"buffersrc": a.buffer.src,
+				"is_music": a.is_music,
+				"playbackTime": playbackTime,
+				"volume": a.volume,
+				"looping": a.looping,
+				"muted": a.is_muted,
+				"playbackRate": a.playbackRate,
+				"paused": a.is_paused,
+				"resume_position": a.resume_position
+			};
+			if (a.pannerEnabled)
+			{
+				d["pan"] = {};
+				panobj = d["pan"];
+				if (a.objectTracker && a.objectTracker.hasObject())
+				{
+					panobj["objUid"] = a.objectTracker.obj.uid;
+				}
+				else
+				{
+					panobj["x"] = a.panX;
+					panobj["y"] = a.panY;
+					panobj["a"] = a.panAngle;
+				}
+				panobj["ia"] = a.panConeInner;
+				panobj["oa"] = a.panConeOuter;
+				panobj["og"] = a.panConeOuterGain;
+			}
+			playingarr.push(d);
+		}
+		var fxobj = o["effects"];
+		var fxarr;
+		for (p in effects)
+		{
+			if (effects.hasOwnProperty(p))
+			{
+				fxarr = [];
+				for (i = 0, len = effects[p].length; i < len; i++)
+				{
+					fxarr.push({ "type": effects[p][i].type, "params": effects[p][i].params });
+				}
+				fxobj[p] = fxarr;
+			}
+		}
+		return o;
+	};
+	var objectTrackerUidsToLoad = [];
+	instanceProto.loadFromJSON = function (o)
+	{
+		var setSilent = o["silent"];
+		masterVolume = o["masterVolume"];
+		this.listenerZ = o["listenerZ"];
+		this.listenerTracker.setObject(null);
+		var listenerUid = o["listenerUid"];
+		if (listenerUid !== -1)
+		{
+			this.listenerTracker.loadUid = listenerUid;
+			objectTrackerUidsToLoad.push(this.listenerTracker);
+		}
+		var playingarr = o["playing"];
+		var i, len, d, src, is_music, tag, playbackTime, looping, vol, b, a, p, pan, panObjUid;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			audioInstances[i].stop();
+		}
+		var fxarr, fxtype, fxparams, fx;
+		for (p in effects)
+		{
+			if (effects.hasOwnProperty(p))
+			{
+				for (i = 0, len = effects[p].length; i < len; i++)
+					effects[p][i].remove();
+			}
+		}
+		cr.wipe(effects);
+		for (p in o["effects"])
+		{
+			if (o["effects"].hasOwnProperty(p))
+			{
+				fxarr = o["effects"][p];
+				for (i = 0, len = fxarr.length; i < len; i++)
+				{
+					fxtype = fxarr[i]["type"];
+					fxparams = fxarr[i]["params"];
+					switch (fxtype) {
+					case "filter":
+						addEffectForTag(p, new FilterEffect(fxparams[0], fxparams[1], fxparams[2], fxparams[3], fxparams[4], fxparams[5]));
+						break;
+					case "delay":
+						addEffectForTag(p, new DelayEffect(fxparams[0], fxparams[1], fxparams[2]));
+						break;
+					case "convolve":
+						src = fxparams[2];
+						b = this.getAudioBuffer(src, false);
+						if (b.bufferObject)
+						{
+							fx = new ConvolveEffect(b.bufferObject, fxparams[0], fxparams[1], src);
+						}
+						else
+						{
+							fx = new ConvolveEffect(null, fxparams[0], fxparams[1], src);
+							b.normalizeWhenReady = fxparams[0];
+							b.convolveWhenReady = fx;
+						}
+						addEffectForTag(p, fx);
+						break;
+					case "flanger":
+						addEffectForTag(p, new FlangerEffect(fxparams[0], fxparams[1], fxparams[2], fxparams[3], fxparams[4]));
+						break;
+					case "phaser":
+						addEffectForTag(p, new PhaserEffect(fxparams[0], fxparams[1], fxparams[2], fxparams[3], fxparams[4], fxparams[5]));
+						break;
+					case "gain":
+						addEffectForTag(p, new GainEffect(fxparams[0]));
+						break;
+					case "tremolo":
+						addEffectForTag(p, new TremoloEffect(fxparams[0], fxparams[1]));
+						break;
+					case "ringmod":
+						addEffectForTag(p, new RingModulatorEffect(fxparams[0], fxparams[1]));
+						break;
+					case "distortion":
+						addEffectForTag(p, new DistortionEffect(fxparams[0], fxparams[1], fxparams[2], fxparams[3], fxparams[4]));
+						break;
+					case "compressor":
+						addEffectForTag(p, new CompressorEffect(fxparams[0], fxparams[1], fxparams[2], fxparams[3], fxparams[4]));
+						break;
+					case "analyser":
+						addEffectForTag(p, new AnalyserEffect(fxparams[0], fxparams[1]));
+						break;
+					}
+				}
+			}
+		}
+		for (i = 0, len = playingarr.length; i < len; i++)
+		{
+			d = playingarr[i];
+			src = d["buffersrc"];
+			is_music = d["is_music"];
+			tag = d["tag"];
+			playbackTime = d["playbackTime"];
+			looping = d["looping"];
+			vol = d["volume"];
+			pan = d["pan"];
+			panObjUid = (pan && pan.hasOwnProperty("objUid")) ? pan["objUid"] : -1;
+			a = this.getAudioInstance(src, tag, is_music, looping, vol);
+			if (!a)
+			{
+				b = this.getAudioBuffer(src, is_music);
+				b.seekWhenReady = playbackTime;
+				b.pauseWhenReady = d["paused"];
+				if (pan)
+				{
+					if (panObjUid !== -1)
+					{
+						b.panWhenReady.push({ objUid: panObjUid, ia: pan["ia"], oa: pan["oa"], og: pan["og"], thistag: tag });
+					}
+					else
+					{
+						b.panWhenReady.push({ x: pan["x"], y: pan["y"], a: pan["a"], ia: pan["ia"], oa: pan["oa"], og: pan["og"], thistag: tag });
+					}
+				}
+				continue;
+			}
+			a.resume_position = d["resume_position"];
+			a.setPannerEnabled(!!pan);
+			a.play(looping, vol, playbackTime);
+			a.updatePlaybackRate();
+			a.updateVolume();
+			a.doSetMuted(a.is_muted || a.is_silent);
+			if (d["paused"])
+				a.pause();
+			if (d["muted"])
+				a.mute();
+			if (pan)
+			{
+				if (panObjUid !== -1)
+				{
+					a.objectTracker = a.objectTracker || new ObjectTracker();
+					a.objectTracker.loadUid = panObjUid;
+					objectTrackerUidsToLoad.push(a.objectTracker);
+				}
+				else
+				{
+					a.setPan(pan["x"], pan["y"], pan["a"], pan["ia"], pan["oa"], pan["og"]);
+				}
+			}
+		}
+		if (setSilent && !silent)			// setting silent
+		{
+			for (i = 0, len = audioInstances.length; i < len; i++)
+				audioInstances[i].setSilent(true);
+			silent = true;
+		}
+		else if (!setSilent && silent)		// setting not silent
+		{
+			for (i = 0, len = audioInstances.length; i < len; i++)
+				audioInstances[i].setSilent(false);
+			silent = false;
+		}
+	};
+	instanceProto.afterLoad = function ()
+	{
+		var i, len, ot;
+		for (i = 0, len = objectTrackerUidsToLoad.length; i < len; i++)
+		{
+			ot = objectTrackerUidsToLoad[i];
+			ot.setObject(this.runtime.getObjectByUID(ot.loadUid));
+			ot.loadUid = -1;
+		}
+		objectTrackerUidsToLoad.length = 0;
+	};
+	instanceProto.onSuspend = function (s)
+	{
+		var i, len;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+			audioInstances[i].setSuspended(s);
+	};
+	instanceProto.tick = function ()
+	{
+		var dt = this.runtime.dt;
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			a.tick(dt);
+			if (a.myapi !== API_HTML5 && a.myapi !== API_APPMOBI)
+			{
+				if (!a.fresh && !a.stopped && a.hasEnded())
+				{
+					a.stopped = true;
+					audTag = a.tag;
+					audRuntime.trigger(cr.plugins_.Audio.prototype.cnds.OnEnded, audInst);
+				}
+			}
+			if (timescale_mode !== 0)
+				a.updatePlaybackRate();
+		}
+		var p, arr, f;
+		for (p in effects)
+		{
+			if (effects.hasOwnProperty(p))
+			{
+				arr = effects[p];
+				for (i = 0, len = arr.length; i < len; i++)
+				{
+					f = arr[i];
+					if (f.tick)
+						f.tick();
+				}
+			}
+		}
+		if (api === API_WEBAUDIO && this.listenerTracker.hasObject())
+		{
+			this.listenerTracker.tick(dt);
+			context["listener"]["setPosition"](this.listenerTracker.obj.x, this.listenerTracker.obj.y, this.listenerZ);
+			context["listener"]["setVelocity"](this.listenerTracker.getVelocityX(), this.listenerTracker.getVelocityY(), 0);
+		}
+	};
+	instanceProto.getAudioBuffer = function (src_, is_music)
+	{
+		var i, len, a;
+		for (i = 0, len = audioBuffers.length; i < len; i++)
+		{
+			a = audioBuffers[i];
+			if (a.src === src_)
+				return a;
+		}
+		a = new C2AudioBuffer(src_, is_music);
+		audioBuffers.push(a);
+		return a;
+	};
+	instanceProto.getAudioInstance = function (src_, tag, is_music, looping, vol)
+	{
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (a.src === src_ && (a.canBeRecycled() || is_music))
+			{
+				a.tag = tag;
+				return a;
+			}
+		}
+		var b = this.getAudioBuffer(src_, is_music);
+		if (!b.bufferObject)
+		{
+			if (tag !== "<preload>")
+			{
+				b.playTagWhenReady = tag;
+				b.loopWhenReady = looping;
+				b.volumeWhenReady = vol;
+			}
+			return null;
+		}
+		a = new C2AudioInstance(b, tag);
+		audioInstances.push(a);
+		return a;
+	};
+	var taggedAudio = [];
+	function getAudioByTag(tag)
+	{
+		taggedAudio.length = 0;
+		if (!tag.length)
+		{
+			if (!lastAudio || lastAudio.hasEnded())
+				return;
+			else
+			{
+				taggedAudio.length = 1;
+				taggedAudio[0] = lastAudio;
+				return;
+			}
+		}
+		var i, len, a;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			a = audioInstances[i];
+			if (tag.toLowerCase() === a.tag.toLowerCase())
+				taggedAudio.push(a);
+		}
+	};
+	function reconnectEffects(tag)
+	{
+		var i, len, arr, n, toNode = context["destination"];
+		if (effects.hasOwnProperty(tag))
+		{
+			arr = effects[tag];
+			if (arr.length)
+			{
+				toNode = arr[0].getInputNode();
+				for (i = 0, len = arr.length; i < len; i++)
+				{
+					n = arr[i];
+					if (i + 1 === len)
+						n.connectTo(context["destination"]);
+					else
+						n.connectTo(arr[i + 1].getInputNode());
+				}
+			}
+		}
+		getAudioByTag(tag);
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].reconnect(toNode);
+		if (micSource && micTag === tag)
+		{
+			micSource["disconnect"]();
+			micSource["connect"](toNode);
+		}
+	};
+	function addEffectForTag(tag, fx)
+	{
+		if (!effects.hasOwnProperty(tag))
+			effects[tag] = [fx];
+		else
+			effects[tag].push(fx);
+		reconnectEffects(tag);
+	};
+	function Cnds() {};
+	Cnds.prototype.OnEnded = function (t)
+	{
+		return audTag.toLowerCase() === t.toLowerCase();
+	};
+	Cnds.prototype.PreloadsComplete = function ()
+	{
+		var i, len;
+		for (i = 0, len = audioBuffers.length; i < len; i++)
+		{
+			if (!audioBuffers[i].isLoaded())
+				return false;
+		}
+		return true;
+	};
+	Cnds.prototype.AdvancedAudioSupported = function ()
+	{
+		return api === API_WEBAUDIO;
+	};
+	Cnds.prototype.IsSilent = function ()
+	{
+		return silent;
+	};
+	Cnds.prototype.IsAnyPlaying = function ()
+	{
+		var i, len;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+		{
+			if (audioInstances[i].isPlaying())
+				return true;
+		}
+		return false;
+	};
+	Cnds.prototype.IsTagPlaying = function (tag)
+	{
+		getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+		{
+			if (taggedAudio[i].isPlaying())
+				return true;
+		}
+		return false;
+	};
+	pluginProto.cnds = new Cnds();
+	function Acts() {};
+	Acts.prototype.Play = function (file, looping, vol, tag)
+	{
+		if (silent)
+			return;
+		var v = dbToLinear(vol);
+		var is_music = file[1];
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
+		if (!lastAudio)
+			return;
+		lastAudio.setPannerEnabled(false);
+		lastAudio.play(looping!==0, v);
+	};
+	Acts.prototype.PlayAtPosition = function (file, looping, vol, x_, y_, angle_, innerangle_, outerangle_, outergain_, tag)
+	{
+		if (silent)
+			return;
+		var v = dbToLinear(vol);
+		var is_music = file[1];
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
+		if (!lastAudio)
+		{
+			var b = this.getAudioBuffer(src, is_music);
+			b.panWhenReady.push({ x: x_, y: y_, a: angle_, ia: innerangle_, oa: outerangle_, og: dbToLinear(outergain_), thistag: tag });
+			return;
+		}
+		lastAudio.setPannerEnabled(true);
+		lastAudio.setPan(x_, y_, angle_, innerangle_, outerangle_, dbToLinear(outergain_));
+		lastAudio.play(looping!==0, v);
+	};
+	Acts.prototype.PlayAtObject = function (file, looping, vol, obj, innerangle, outerangle, outergain, tag)
+	{
+		if (silent || !obj)
+			return;
+		var inst = obj.getFirstPicked();
+		if (!inst)
+			return;
+		var v = dbToLinear(vol);
+		var is_music = file[1];
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
+		if (!lastAudio)
+		{
+			var b = this.getAudioBuffer(src, is_music);
+			b.panWhenReady.push({ obj: inst, ia: innerangle, oa: outerangle, og: dbToLinear(outergain), thistag: tag });
+			return;
+		}
+		lastAudio.setPannerEnabled(true);
+		lastAudio.setPan(inst.x, inst.y, cr.to_degrees(inst.angle), innerangle, outerangle, dbToLinear(outergain));
+		lastAudio.setObject(inst);
+		lastAudio.play(looping!==0, v);
+	};
+	Acts.prototype.PlayByName = function (folder, filename, looping, vol, tag)
+	{
+		if (silent)
+			return;
+		var v = dbToLinear(vol);
+		var is_music = (folder === 1);
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
+		if (!lastAudio)
+			return;
+		lastAudio.setPannerEnabled(false);
+		lastAudio.play(looping!==0, v);
+	};
+	Acts.prototype.PlayAtPositionByName = function (folder, filename, looping, vol, x_, y_, angle_, innerangle_, outerangle_, outergain_, tag)
+	{
+		if (silent)
+			return;
+		var v = dbToLinear(vol);
+		var is_music = (folder === 1);
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
+		if (!lastAudio)
+		{
+			var b = this.getAudioBuffer(src, is_music);
+			b.panWhenReady.push({ x: x_, y: y_, a: angle_, ia: innerangle_, oa: outerangle_, og: dbToLinear(outergain_), thistag: tag });
+			return;
+		}
+		lastAudio.setPannerEnabled(true);
+		lastAudio.setPan(x_, y_, angle_, innerangle_, outerangle_, dbToLinear(outergain_));
+		lastAudio.play(looping!==0, v);
+	};
+	Acts.prototype.PlayAtObjectByName = function (folder, filename, looping, vol, obj, innerangle, outerangle, outergain, tag)
+	{
+		if (silent || !obj)
+			return;
+		var inst = obj.getFirstPicked();
+		if (!inst)
+			return;
+		var v = dbToLinear(vol);
+		var is_music = (folder === 1);
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
+		if (!lastAudio)
+		{
+			var b = this.getAudioBuffer(src, is_music);
+			b.panWhenReady.push({ obj: inst, ia: innerangle, oa: outerangle, og: dbToLinear(outergain), thistag: tag });
+			return;
+		}
+		lastAudio.setPannerEnabled(true);
+		lastAudio.setPan(inst.x, inst.y, cr.to_degrees(inst.angle), innerangle, outerangle, dbToLinear(outergain));
+		lastAudio.setObject(inst);
+		lastAudio.play(looping!==0, v);
+	};
+	Acts.prototype.SetLooping = function (tag, looping)
+	{
+		getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setLooping(looping === 0);
+	};
+	Acts.prototype.SetMuted = function (tag, muted)
+	{
+		getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setMuted(muted === 0);
+	};
+	Acts.prototype.SetVolume = function (tag, vol)
+	{
+		getAudioByTag(tag);
+		var v = dbToLinear(vol);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setVolume(v);
+	};
+	Acts.prototype.Preload = function (file)
+	{
+		if (silent)
+			return;
+		var is_music = file[1];
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		if (api === API_APPMOBI)
+		{
+			if (this.runtime.isDirectCanvas)
+				AppMobi["context"]["loadSound"](src);
+			else
+				AppMobi["player"]["loadSound"](src);
+			return;
+		}
+		else if (api === API_PHONEGAP)
+		{
+			return;
+		}
+		this.getAudioInstance(src, "<preload>", is_music, false);
+	};
+	Acts.prototype.PreloadByName = function (folder, filename)
+	{
+		if (silent)
+			return;
+		var is_music = (folder === 1);
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		if (api === API_APPMOBI)
+		{
+			if (this.runtime.isDirectCanvas)
+				AppMobi["context"]["loadSound"](src);
+			else
+				AppMobi["player"]["loadSound"](src);
+			return;
+		}
+		else if (api === API_PHONEGAP)
+		{
+			return;
+		}
+		this.getAudioInstance(src, "<preload>", is_music, false);
+	};
+	Acts.prototype.SetPlaybackRate = function (tag, rate)
+	{
+		getAudioByTag(tag);
+		if (rate < 0.0)
+			rate = 0;
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].setPlaybackRate(rate);
+	};
+	Acts.prototype.Stop = function (tag)
+	{
+		getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+			taggedAudio[i].stop();
+	};
+	Acts.prototype.SetPaused = function (tag, state)
+	{
+		getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+		{
+			if (state === 0)
+				taggedAudio[i].pause();
+			else
+				taggedAudio[i].resume();
+		}
+	};
+	Acts.prototype.Seek = function (tag, pos)
+	{
+		getAudioByTag(tag);
+		var i, len;
+		for (i = 0, len = taggedAudio.length; i < len; i++)
+		{
+			taggedAudio[i].seek(pos);
+		}
+	};
+	Acts.prototype.SetSilent = function (s)
+	{
+		var i, len;
+		if (s === 2)					// toggling
+			s = (silent ? 1 : 0);		// choose opposite state
+		if (s === 0 && !silent)			// setting silent
+		{
+			for (i = 0, len = audioInstances.length; i < len; i++)
+				audioInstances[i].setSilent(true);
+			silent = true;
+		}
+		else if (s === 1 && silent)		// setting not silent
+		{
+			for (i = 0, len = audioInstances.length; i < len; i++)
+				audioInstances[i].setSilent(false);
+			silent = false;
+		}
+	};
+	Acts.prototype.SetMasterVolume = function (vol)
+	{
+		masterVolume = dbToLinear(vol);
+		var i, len;
+		for (i = 0, len = audioInstances.length; i < len; i++)
+			audioInstances[i].updateVolume();
+	};
+	Acts.prototype.AddFilterEffect = function (tag, type, freq, detune, q, gain, mix)
+	{
+		if (api !== API_WEBAUDIO || type < 0 || type >= filterTypes.length)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new FilterEffect(type, freq, detune, q, gain, mix));
+	};
+	Acts.prototype.AddDelayEffect = function (tag, delay, gain, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new DelayEffect(delay, dbToLinear(gain), mix));
+	};
+	Acts.prototype.AddFlangerEffect = function (tag, delay, modulation, freq, feedback, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new FlangerEffect(delay / 1000, modulation / 1000, freq, feedback / 100, mix));
+	};
+	Acts.prototype.AddPhaserEffect = function (tag, freq, detune, q, mod, modfreq, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new PhaserEffect(freq, detune, q, mod, modfreq, mix));
+	};
+	Acts.prototype.AddConvolutionEffect = function (tag, file, norm, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		var doNormalize = (norm === 0);
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		var b = this.getAudioBuffer(src, false);
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		var fx;
+		if (b.bufferObject)
+		{
+			fx = new ConvolveEffect(b.bufferObject, doNormalize, mix, src);
+		}
+		else
+		{
+			fx = new ConvolveEffect(null, doNormalize, mix, src);
+			b.normalizeWhenReady = doNormalize;
+			b.convolveWhenReady = fx;
+		}
+		addEffectForTag(tag, fx);
+	};
+	Acts.prototype.AddGainEffect = function (tag, g)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		addEffectForTag(tag, new GainEffect(dbToLinear(g)));
+	};
+	Acts.prototype.AddMuteEffect = function (tag)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		addEffectForTag(tag, new GainEffect(0));	// re-use gain effect with 0 gain
+	};
+	Acts.prototype.AddTremoloEffect = function (tag, freq, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new TremoloEffect(freq, mix));
+	};
+	Acts.prototype.AddRingModEffect = function (tag, freq, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new RingModulatorEffect(freq, mix));
+	};
+	Acts.prototype.AddDistortionEffect = function (tag, threshold, headroom, drive, makeupgain, mix)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		mix = mix / 100;
+		if (mix < 0) mix = 0;
+		if (mix > 1) mix = 1;
+		addEffectForTag(tag, new DistortionEffect(threshold, headroom, drive, makeupgain, mix));
+	};
+	Acts.prototype.AddCompressorEffect = function (tag, threshold, knee, ratio, attack, release)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		addEffectForTag(tag, new CompressorEffect(threshold, knee, ratio, attack / 1000, release / 1000));
+	};
+	Acts.prototype.AddAnalyserEffect = function (tag, fftSize, smoothing)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		addEffectForTag(tag, new AnalyserEffect(fftSize, smoothing));
+	};
+	Acts.prototype.RemoveEffects = function (tag)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		var i, len, arr;
+		if (effects.hasOwnProperty(tag))
+		{
+			arr = effects[tag];
+			if (arr.length)
+			{
+				for (i = 0, len = arr.length; i < len; i++)
+					arr[i].remove();
+				arr.length = 0;
+				reconnectEffects(tag);
+			}
+		}
+	};
+	Acts.prototype.SetEffectParameter = function (tag, index, param, value, ramp, time)
+	{
+		if (api !== API_WEBAUDIO)
+			return;
+		tag = tag.toLowerCase();
+		index = Math.floor(index);
+		var arr;
+		if (!effects.hasOwnProperty(tag))
+			return;
+		arr = effects[tag];
+		if (index < 0 || index >= arr.length)
+			return;
+		arr[index].setParam(param, value, ramp, time);
+	};
+	Acts.prototype.SetListenerObject = function (obj_)
+	{
+		if (!obj_ || api !== API_WEBAUDIO)
+			return;
+		var inst = obj_.getFirstPicked();
+		if (!inst)
+			return;
+		this.listenerTracker.setObject(inst);
+	};
+	Acts.prototype.SetListenerZ = function (z)
+	{
+		this.listenerZ = z;
+	};
+	pluginProto.acts = new Acts();
+	function Exps() {};
+	Exps.prototype.Duration = function (ret, tag)
+	{
+		getAudioByTag(tag);
+		if (taggedAudio.length)
+			ret.set_float(taggedAudio[0].getDuration());
+		else
+			ret.set_float(0);
+	};
+	Exps.prototype.PlaybackTime = function (ret, tag)
+	{
+		getAudioByTag(tag);
+		if (taggedAudio.length)
+			ret.set_float(taggedAudio[0].getPlaybackTime());
+		else
+			ret.set_float(0);
+	};
+	Exps.prototype.Volume = function (ret, tag)
+	{
+		getAudioByTag(tag);
+		if (taggedAudio.length)
+		{
+			var v = taggedAudio[0].getVolume();
+			ret.set_float(linearToDb(v));
+		}
+		else
+			ret.set_float(0);
+	};
+	Exps.prototype.MasterVolume = function (ret)
+	{
+		ret.set_float(masterVolume);
+	};
+	Exps.prototype.EffectCount = function (ret, tag)
+	{
+		tag = tag.toLowerCase();
+		var arr = null;
+		if (effects.hasOwnProperty(tag))
+			arr = effects[tag];
+		ret.set_int(arr ? arr.length : 0);
+	};
+	function getAnalyser(tag, index)
+	{
+		var arr = null;
+		if (effects.hasOwnProperty(tag))
+			arr = effects[tag];
+		if (arr && index >= 0 && index < arr.length && arr[index].freqBins)
+			return arr[index];
+		else
+			return null;
+	};
+	Exps.prototype.AnalyserFreqBinCount = function (ret, tag, index)
+	{
+		tag = tag.toLowerCase();
+		index = Math.floor(index);
+		var analyser = getAnalyser(tag, index);
+		ret.set_int(analyser ? analyser.node["frequencyBinCount"] : 0);
+	};
+	Exps.prototype.AnalyserFreqBinAt = function (ret, tag, index, bin)
+	{
+		tag = tag.toLowerCase();
+		index = Math.floor(index);
+		bin = Math.floor(bin);
+		var analyser = getAnalyser(tag, index);
+		if (!analyser)
+			ret.set_float(0);
+		else if (bin < 0 || bin >= analyser.node["frequencyBinCount"])
+			ret.set_float(0);
+		else
+			ret.set_float(analyser.freqBins[bin]);
+	};
+	Exps.prototype.AnalyserPeakLevel = function (ret, tag, index)
+	{
+		tag = tag.toLowerCase();
+		index = Math.floor(index);
+		var analyser = getAnalyser(tag, index);
+		if (analyser)
+			ret.set_float(analyser.peak);
+		else
+			ret.set_float(0);
+	};
+	Exps.prototype.AnalyserRMSLevel = function (ret, tag, index)
+	{
+		tag = tag.toLowerCase();
+		index = Math.floor(index);
+		var analyser = getAnalyser(tag, index);
+		if (analyser)
+			ret.set_float(analyser.rms);
+		else
+			ret.set_float(0);
 	};
 	pluginProto.exps = new Exps();
 }());
@@ -12270,6 +15150,588 @@ cr.plugins_.Mouse = function(runtime)
 		ret.set_float(this.mouseYcanvas);
 	};
 	pluginProto.exps = new Exps();
+}());
+;
+;
+cr.plugins_.Rex_Container = function(runtime)
+{
+	this.runtime = runtime;
+};
+cr.plugins_.Rex_Container.tag2container = {};
+(function ()
+{
+	var pluginProto = cr.plugins_.Rex_Container.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+        this.uid2container = {};  // pick container from instance's uid
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+	    this.check_name = "CONTAINER";
+        this.insts_group = {};
+		this.myDestroyCallback = (function (self) {
+											return function(inst) {
+												self.onInstanceDestroyed(inst);
+											};
+										})(this);
+        this.runtime.addDestroyCallback(this.myDestroyCallback);
+        this.pin_mode = this.properties[0];
+		this.tag = this.properties[2];
+		cr.plugins_.Rex_Container.tag2container[this.tag] = this;
+        if (this.pin_mode != 0)
+        {
+            this.pin_status = {};
+            this.runtime.tick2Me(this);
+        }
+	};
+	instanceProto.onInstanceDestroyed = function (inst)
+	{
+        var uid=inst.uid;
+        if (!(uid in this.type.uid2container))
+            return;
+        var type_name = inst.type.name;
+        delete this.insts_group[type_name][uid];
+        delete this.type.uid2container[uid];
+        if ((this.pin_mode != 0) && (this.pin_status[uid] != null))
+            delete this.pin_status[uid];
+	};
+	instanceProto.onDestroy = function ()
+	{
+	    delete cr.plugins_.Rex_Container.tag2container[this.tag];
+        var uid2container = this.type.uid2container;
+        var type_name,_container,uid,inst;
+        for (type_name in this.insts_group)
+        {
+            _container = this.insts_group[type_name];
+            for(uid in _container)
+            {
+                delete uid2container[uid];
+            }
+        }
+		this.runtime.removeDestroyCallback(this.myDestroyCallback);
+	};
+	instanceProto.tick2 = function ()
+	{
+	    if (this.pin_mode == 0)
+	        return;
+	    var uid,status,pin_inst,a,new_x,new_y,new_angle;
+	    for (uid in this.pin_status)
+	    {
+	        status = this.pin_status[uid];
+            pin_inst = status.pin_inst;
+            if ((this.pin_mode == 1) || (this.pin_mode == 2))
+			{
+			    a = this.angle + status.delta_angle;
+                new_x = this.x + (status.delta_dist*Math.cos(a));
+                new_y = this.y + (status.delta_dist*Math.sin(a));
+			}
+            if ((this.pin_mode == 1) || (this.pin_mode == 3))
+			{
+			    new_angle = status.sub_start_angle + (this.angle - status.main_start_angle);
+			}
+            if (((new_x != null) && (new_y != null)) &&
+			    ((new_x != pin_inst.x) || (new_y != pin_inst.y)))
+            {
+			    pin_inst.x = new_x;
+			    pin_inst.y = new_y;
+			    pin_inst.set_bbox_changed();
+            }
+			if ((new_angle != null) && (new_angle != pin_inst.angle))
+			{
+			    pin_inst.angle = new_angle;
+			    pin_inst.set_bbox_changed();
+			}
+	    }
+	};
+	instanceProto.draw = function(ctx)
+	{
+	};
+	instanceProto.drawGL = function(glw)
+	{
+	};
+	instanceProto.add_insts = function (insts)
+	{
+        var type_name=insts[0].type.name;
+        if (this.insts_group[type_name]==null)
+            this.insts_group[type_name] = {};
+        var _container = this.insts_group[type_name];
+        var inst,uid,i,cnt=insts.length;
+        var uid2container = this.type.uid2container;
+		var is_world = insts[0].type.plugin.is_world;
+        for (i=0;i<cnt;i++)
+        {
+            inst = insts[i];
+            uid = inst.uid;
+            uid2container[uid] = this;
+            _container[uid] = inst;
+            if (is_world && (this.pin_mode != 0))
+                this.pin_inst(inst);
+        }
+	};
+	instanceProto.pin_inst = function (inst)
+	{
+        this.pin_status[inst.uid] = {pin_inst:inst,
+                                     delta_angle:cr.angleTo(this.x, this.y, inst.x, inst.y) - this.angle,
+                                     delta_dist:cr.distanceTo(this.x, this.y, inst.x, inst.y),
+									 main_start_angle:this.angle,
+									 sub_start_angle:inst.angle,
+                                    };
+	};
+	instanceProto.create_insts = function (obj_type,x,y,_layer)
+	{
+        if (obj_type == null)
+            return;
+        var layer = (typeof _layer == "number")?
+                    this.runtime.getLayerByNumber(_layer):
+                    this.runtime.getLayerByName(_layer);
+        var inst = this.runtime.createInstance(obj_type, layer, x, y );
+        var sol = inst.type.getCurrentSol();
+        sol.select_all = false;
+		sol.instances.length = 1;
+		sol.instances[0] = inst;
+	    this.add_insts([inst]);
+	    return inst;
+	};
+	instanceProto.remove_insts = function (insts)
+	{
+        var type_name=insts[0].type.name;
+        if (this.insts_group[type_name]==null)
+            this.insts_group[type_name] = {};
+        var _container = this.insts_group[type_name];
+        var inst,uid,i,cnt=insts.length;
+        var uid2container = this.type.uid2container;
+        for (i=0;i<cnt;i++)
+        {
+            inst = insts[i];
+            uid = inst.uid;
+            if (uid in uid2container)
+            {
+                delete uid2container[uid];
+                delete _container[uid];
+            }
+        }
+	};
+    instanceProto._pick_insts = function (objtype)
+	{
+        var type_name=objtype.name;
+	    var _container = this.insts_group[type_name];
+        var sol = objtype.getCurrentSol();
+        sol.select_all = true;
+        var insts = sol.getObjects();
+        var insts_length = insts.length;
+        var i, inst;
+        sol.instances.length = 0;   // clear contents
+        for (i=0; i < insts_length; i++)
+        {
+           inst = insts[i];
+           if (inst.uid in _container)
+               sol.instances.push(inst);
+        }
+        sol.select_all = false;
+        return  (sol.instances.length >0);
+	};
+	instanceProto._pick_all_insts = function ()
+	{
+	    var type_name, _container, uid, inst, objtype, sol;
+	    var has_inst = false;
+        for (type_name in this.insts_group)
+        {
+            _container = this.insts_group[type_name];
+            objtype = null;
+            for (uid in _container)
+            {
+                inst = _container[uid];
+                if (objtype == null)
+                {
+                    objtype = inst.type;
+                    sol = objtype.getCurrentSol();
+                    sol.select_all = false;
+                    sol.instances.length = 0;
+                }
+                sol.instances.push(inst);
+                has_inst = true;
+            }
+        }
+        return has_inst;
+	};
+	instanceProto._destory_all_insts = function ()
+	{
+        var uid2container = this.type.uid2container;
+        var type_name,_container,uid,inst;
+        for (type_name in this.insts_group)
+        {
+            _container = this.insts_group[type_name];
+            for(uid in _container)
+            {
+                inst = _container[uid];
+                delete _container[uid];
+                delete uid2container[uid];
+                this.runtime.DestroyInstance(inst);
+            }
+        }
+	};
+	function Cnds() {};
+	pluginProto.cnds = new Cnds();
+	Cnds.prototype.PickInsts = function (objtype)
+	{
+		return this._pick_insts(objtype);
+		return true;
+	};
+	Cnds.prototype.PickContainer =function (objtype)
+	{
+    	var insts = objtype.getCurrentSol().getObjects();
+    	var cnt = insts.length;
+    	if (cnt == 0)
+            return false;
+        var i,container,container_uid,uids={};
+	    var runtime = this.runtime;
+	    var container_type = runtime.getCurrentCondition().type;
+        var sol = container_type.getCurrentSol();
+        sol.select_all = false;
+        sol.instances.length = 0;
+        for (i=0;i<cnt;i++)
+        {
+            container = container_type.uid2container[insts[i].uid];
+            container_uid = container.uid;
+            if ((container!=null) && !(container_uid in uids))
+            {
+                sol.instances.push(container);
+                uids[container_uid] = true;
+            }
+        }
+        var current_event = runtime.getCurrentEventStack().current_event;
+        runtime.pushCopySol(current_event.solModifiers);
+        current_event.retrigger();
+        runtime.popSol(current_event.solModifiers);
+		return false;
+	};
+	Cnds.prototype.PickAllInsts = function ()
+	{
+	    return this._pick_all_insts();
+	};
+	function Acts() {};
+	pluginProto.acts = new Acts();
+	Acts.prototype.AddInsts = function (objtype)
+	{
+        var insts = objtype.getCurrentSol().getObjects();
+        if (insts.length==0)
+            return;
+	    this.add_insts(insts);
+	};
+    Acts.prototype.PickInsts = function (objtype)
+	{
+	    this._pick_insts(objtype);
+	};
+	Acts.prototype.PickAllInsts = function ()
+	{
+	    this._pick_all_insts();
+	};
+	Acts.prototype.CreateInsts = function (obj_type,x,y,_layer)
+	{
+        this.create_insts(obj_type,x,y,_layer);
+	};
+	Acts.prototype.RemoveInsts = function (objtype)
+	{
+        var insts = objtype.getCurrentSol().getObjects();
+        if (insts.length==0)
+            return;
+	    this.remove_insts(insts);
+	};
+	Acts.prototype.ContainerDestroy = function ()
+	{
+	    this._destory_all_insts();
+		this.runtime.DestroyInstance(this);
+	};
+	function Exps() {};
+	pluginProto.exps = new Exps();
+	Exps.prototype.Tag = function (ret)
+	{
+		ret.set_string(this.tag);
+	};
+}());
+;
+;
+cr.plugins_.Rex_SysExt = function(runtime)
+{
+	this.runtime = runtime;
+};
+(function ()
+{
+	var pluginProto = cr.plugins_.Rex_SysExt.prototype;
+	pluginProto.Type = function(plugin)
+	{
+		this.plugin = plugin;
+		this.runtime = plugin.runtime;
+	};
+	var typeProto = pluginProto.Type.prototype;
+	typeProto.onCreate = function()
+	{
+	};
+	pluginProto.Instance = function(type)
+	{
+		this.type = type;
+		this.runtime = type.runtime;
+	};
+	var instanceProto = pluginProto.Instance.prototype;
+	instanceProto.onCreate = function()
+	{
+        this.tmp_insts = [];
+	};
+    instanceProto._pick_all = function (objtype)
+	{
+        if (!objtype)
+            return false;
+		if (!objtype.instances.length)
+			return false;
+        var sol = objtype.getCurrentSol();
+        sol.select_all = true;
+		objtype.applySolToContainer();
+        return true;
+	};
+    instanceProto._pick_inverse = function (objtype, uid, is_pick_all)
+	{
+        if (!objtype)
+            return false;
+		if (!objtype.instances.length)
+			return false;
+        var sol = objtype.getCurrentSol();
+        if (is_pick_all==1)
+        {
+            sol.select_all = true;
+            cr.shallowAssignArray(sol.instances, sol.getObjects());
+        }
+        var insts = sol.instances;
+        var insts_length = insts.length;
+        var i, inst;
+        var index = -1;
+        for (i=0; i < insts_length; i++)
+        {
+            inst = insts[i];
+            if (inst.uid == uid)
+            {
+                index = i;
+                break;
+            }
+        }
+        if (index != -1)
+            cr.arrayRemove(insts, index);
+        sol.select_all = false;
+        objtype.applySolToContainer();
+        return (sol.instances.length != 0);
+	};
+    instanceProto._quick_pick = function (objtype, uid)
+	{
+        if (!objtype)
+            return;
+		if (!objtype.instances.length)
+			return;
+        var inst = this.runtime.getObjectByUID(uid);
+        var is_find = (inst != null);
+        if (is_find)
+        {
+            var type_name = inst.type.name;
+            if (objtype.is_family)
+            {
+                is_find = false;
+                var members = objtype.members;
+                var cnt = members.length;
+                var i;
+                for (i=0; i<cnt; i++)
+                {
+                    if (type_name == members[i].name)
+                    {
+                        is_find = true;
+                        break;
+                    }
+                }
+            }
+            else
+                is_find = (type_name == objtype.name);
+        }
+        var sol = objtype.getCurrentSol();
+        if (is_find)
+            sol.pick_one(inst);
+        else
+            sol.instances.length = 0;
+        sol.select_all = false;
+        objtype.applySolToContainer();
+        return is_find;
+	};
+    instanceProto._get_layer = function(layerparam)
+    {
+        return (typeof layerparam == "number")?
+               this.runtime.getLayerByNumber(layerparam):
+               this.runtime.getLayerByName(layerparam);
+    };
+	var GetInstPropertyValue = function(inst, prop_index)
+	{
+	    var val;
+	    switch(prop_index)
+	    {
+	    case 0:   // uid
+	        val = inst.uid;
+	        break;
+	    case 1:   // x
+	        val = inst.x;
+	        break;
+	    case 2:   // y
+	        val = inst.y;
+	        break;
+	    case 3:   // width
+	        val = inst.width;
+	        break;
+	    case 4:   // height
+	        val = inst.height;
+	        break;
+	    case 5:   // angle
+	        val = inst.angle;
+	        break;
+	    case 6:   // opacity
+	        val = inst.opacity;
+	        break;
+	    default:
+	        val = 0;
+	        break;
+	    }
+	    return val;
+	};
+	function Cnds() {};
+	pluginProto.cnds = new Cnds();
+	Cnds.prototype.PickAll = function (objtype)
+	{
+		return this._pick_all(objtype);;
+	};
+	Cnds.prototype.PickInverse = function (objtype, uid, is_pick_all)
+	{
+        return this._pick_inverse(objtype, uid, is_pick_all);
+	};
+	Cnds.prototype.QuickPickByUID = function (objtype, uid)
+	{
+        return this._quick_pick(objtype, uid);
+	};
+	function Acts() {};
+	pluginProto.acts = new Acts();
+    Acts.prototype.PickAll = function (objtype)
+	{
+        this._pick_all(objtype);
+	};
+    Acts.prototype.PickByUID = function (objtype, uid, is_pick_all)
+	{
+        if (!objtype)
+            return;
+		if (!objtype.instances.length)
+			return;
+        var sol = objtype.getCurrentSol();
+        if (is_pick_all==1)
+            sol.select_all = true;
+        var insts = sol.getObjects();
+        var insts_length = insts.length;
+        var i, inst;
+        var is_find = false;
+        for (i=0; i < insts_length; i++)
+        {
+            inst = insts[i];
+            if (inst.uid == uid)
+            {
+                is_find = true;
+                break;
+            }
+        }
+        if (is_find)
+            sol.pick_one(inst);
+        else
+            sol.instances.length = 0;
+        sol.select_all = false;
+        objtype.applySolToContainer();
+	};
+    Acts.prototype.QuickPickByUID = function (objtype, uid)
+	{
+        this._quick_pick(objtype, uid);
+	};
+    Acts.prototype.PickByPropCmp = function (objtype, prop_index, cmp, value, is_pick_all)
+	{
+        if (!objtype)
+            return;
+		if (!objtype.instances.length)
+			return;
+        var sol = objtype.getCurrentSol();
+        if (is_pick_all==1)
+            sol.select_all = true;
+        var insts = sol.getObjects();
+        var insts_length = insts.length;
+        var i, inst;
+        this.tmp_insts.length = 0;
+        for (i=0; i < insts_length; i++)
+        {
+            inst = insts[i];
+            if (cr.do_cmp(GetInstPropertyValue(inst, prop_index), cmp, value))
+                this.tmp_insts.push(inst);
+        }
+        cr.shallowAssignArray(sol.instances, this.tmp_insts);
+        sol.select_all = false;
+	};
+    Acts.prototype.SetGroupActive = function (group, active)
+    {
+		var activeGroups = this.runtime.activeGroups;
+        if (activeGroups[group] == null)
+        {
+            alert("Group '" + group + "' does not exist");
+            return;
+        }
+		group = group.toLowerCase();
+		switch (active) {
+		case 0:
+			delete activeGroups[group];
+			break;
+		case 1:
+			activeGroups[group] = true;
+			break;
+		case 2:
+			if (activeGroups[group])
+				delete activeGroups[group];
+			else
+				activeGroups[group] = true;
+			break;
+		}
+    };
+    Acts.prototype.SetLayerVisible = function (layerparam, visible_)
+    {
+        var layer;
+		if (cr.is_number(layerparam))
+			layer = this.runtime.getLayerByNumber(layerparam);
+		else
+			layer = this.runtime.getLayerByName(layerparam);
+        if (!layer)
+            return;
+        var is_visible = (visible_ == 1);
+		if (layer.visible !== is_visible)
+		{
+			layer.visible = is_visible;
+			this.runtime.redraw = true;
+		}
+    };
+    Acts.prototype.PickInverse = function (objtype, uid, is_pick_all)
+	{
+        this._pick_inverse(objtype, uid, is_pick_all);
+	};
+	function Exps() {};
+	pluginProto.exps = new Exps();
+    Exps.prototype.Eval = function (ret, code_string)
+	{
+	    ret.set_any( eval( "("+code_string+")" ) );
+	};
 }());
 ;
 ;
@@ -15582,6 +19044,30 @@ cr.getProjectModel = function() { return [
 	null,
 	[
 	[
+		cr.plugins_.AJAX,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
+		cr.plugins_.Audio,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
 		cr.plugins_.Arr,
 		false,
 		false,
@@ -15631,6 +19117,30 @@ cr.getProjectModel = function() { return [
 	]
 ,	[
 		cr.plugins_.Keyboard,
+		true,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
+		cr.plugins_.Rex_Container,
+		false,
+		true,
+		true,
+		true,
+		true,
+		false,
+		false,
+		false,
+		false
+	]
+,	[
+		cr.plugins_.Rex_SysExt,
 		true,
 		false,
 		false,
@@ -16612,6 +20122,105 @@ cr.getProjectModel = function() { return [
 		[]
 		,[]
 	]
+,	[
+		"t23",
+		cr.plugins_.AJAX,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		3948029970705057,
+		[]
+		,[]
+	]
+,	[
+		"t24",
+		cr.plugins_.Audio,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		7649787048489198,
+		[]
+		,[0,1,1,600,600,10000,1,5000,1]
+	]
+,	[
+		"t25",
+		cr.plugins_.Rex_SysExt,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		2495524060467363,
+		[]
+		,[]
+	]
+,	[
+		"t26",
+		cr.plugins_.Arr,
+		false,
+		[5812694117179802],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		true,
+		false,
+		4549929399688174,
+		[]
+	]
+,	[
+		"t27",
+		cr.plugins_.Arr,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		true,
+		false,
+		7938993675661243,
+		[]
+	]
+,	[
+		"t28",
+		cr.plugins_.Rex_Container,
+		false,
+		[],
+		0,
+		0,
+		null,
+		null,
+		[
+		],
+		false,
+		false,
+		2218021745147041,
+		[]
+	]
 	],
 	[
 	],
@@ -16925,6 +20534,20 @@ cr.getProjectModel = function() { return [
 					0
 				]
 			]
+,			[
+				[-68, 33, 0, 37.4967, 37.4967, 0, 0, 1, 0, 0, 0, 0, []],
+				28,
+				28,
+				[
+				],
+				[
+				],
+				[
+					0,
+					0,
+					""
+				]
+			]
 			],
 			[			]
 		]
@@ -16948,6 +20571,35 @@ cr.getProjectModel = function() { return [
 				null,
 				21,
 				21,
+				[
+				],
+				[
+				],
+				[
+					10,
+					1,
+					1
+				]
+			]
+,			[
+				null,
+				26,
+				26,
+				[
+					0
+				],
+				[
+				],
+				[
+					10,
+					1,
+					1
+				]
+			]
+,			[
+				null,
+				27,
+				27,
 				[
 				],
 				[
@@ -17282,7 +20934,7 @@ false,false,1247528663516111
 					0,
 					[
 						0,
-						360
+						354
 					]
 				]
 				]
@@ -17297,7 +20949,7 @@ false,false,1247528663516111
 					0,
 					[
 						0,
-						360
+						354
 					]
 				]
 				]
@@ -17391,6 +21043,12 @@ false,false,1247528663516111
 				cr.plugins_.Sprite.prototype.acts.Destroy,
 				null,
 				4896364353609775
+			]
+,			[
+				28,
+				cr.plugins_.Rex_Container.prototype.acts.Destroy,
+				null,
+				4651003591127683
 			]
 ,			[
 				19,
@@ -17620,7 +21278,7 @@ false,false,1247528663516111
 					0,
 					[
 						0,
-						9
+						8
 					]
 				]
 				]
@@ -17715,7 +21373,7 @@ false,false,1247528663516111
 					0,
 					[
 						0,
-						9
+						8
 					]
 				]
 				]
@@ -17819,7 +21477,7 @@ false,false,1247528663516111
 					0,
 					[
 						0,
-						9
+						8
 					]
 				]
 				]
@@ -18813,6 +22471,7958 @@ false,false,1247528663516111
 			]
 			]
 		]
+,		[
+			0,
+			null,
+			false,
+			1055093927782182,
+			[
+			[
+				12,
+				cr.plugins_.Mouse.prototype.cnds.OnObjectClicked,
+				null,
+				1,
+				false,
+				false,
+				false,
+				9789493035361764
+				,[
+				[
+					3,
+					0
+				]
+,				[
+					3,
+					0
+				]
+,				[
+					4,
+					5
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.cnds.Compare,
+				null,
+				0,
+				false,
+				false,
+				false,
+				8528399097289637
+				,[
+				[
+					7,
+					[
+						23,
+						"status"
+					]
+				]
+,				[
+					8,
+					0
+				]
+,				[
+					7,
+					[
+						0,
+						0
+					]
+				]
+				]
+			]
+,			[
+				5,
+				cr.plugins_.Sprite.prototype.cnds.IsVisible,
+				null,
+				0,
+				false,
+				false,
+				false,
+				8566376752224752
+			]
+			],
+			[
+			[
+				22,
+				cr.plugins_.Function.prototype.acts.CallFunction,
+				null,
+				9563231477125002
+				,[
+				[
+					1,
+					[
+						2,
+						"setStatus"
+					]
+				]
+,				[
+					13,
+											[
+							7,
+							[
+								0,
+								1
+							]
+						]
+				]
+				]
+			]
+,			[
+				22,
+				cr.plugins_.Function.prototype.acts.CallFunction,
+				null,
+				2308441931975916
+				,[
+				[
+					1,
+					[
+						2,
+						"deal"
+					]
+				]
+,				[
+					13,
+				]
+				]
+			]
+,			[
+				22,
+				cr.plugins_.Function.prototype.acts.CallFunction,
+				null,
+				2101510537009946
+				,[
+				[
+					1,
+					[
+						2,
+						"playSound"
+					]
+				]
+,				[
+					13,
+											[
+							7,
+							[
+								1,
+								1.7
+							]
+						]
+,
+						[
+							7,
+							[
+								1,
+								1.75
+							]
+						]
+,
+						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			[true, "General"],
+			false,
+			4912126236068669,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.IsGroupActive,
+				null,
+				0,
+				false,
+				false,
+				false,
+				4912126236068669
+				,[
+				[
+					1,
+					[
+						2,
+						"General"
+					]
+				]
+				]
+			]
+			],
+			[
+			]
+			,[
+			[
+				0,
+				null,
+				false,
+				7465178479861793,
+				[
+				[
+					22,
+					cr.plugins_.Function.prototype.cnds.OnFunction,
+					null,
+					2,
+					false,
+					false,
+					false,
+					6517917046784879
+					,[
+					[
+						1,
+						[
+							2,
+							"playSound"
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					1963509119415043
+					,[
+					[
+						11,
+						"soundstart"
+					]
+,					[
+						7,
+						[
+							20,
+							22,
+							cr.plugins_.Function.prototype.exps.Param,
+							false,
+							null
+							,[
+[
+								0,
+								0
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					5819455896837815
+					,[
+					[
+						11,
+						"soundstop"
+					]
+,					[
+						7,
+						[
+							20,
+							22,
+							cr.plugins_.Function.prototype.exps.Param,
+							false,
+							null
+							,[
+[
+								0,
+								1
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					9928932788649547
+					,[
+					[
+						11,
+						"soundloop"
+					]
+,					[
+						7,
+						[
+							20,
+							22,
+							cr.plugins_.Function.prototype.exps.Param,
+							false,
+							null
+							,[
+[
+								0,
+								2
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					24,
+					cr.plugins_.Audio.prototype.acts.Seek,
+					null,
+					7560435417225384
+					,[
+					[
+						1,
+						[
+							2,
+							"s"
+						]
+					]
+,					[
+						0,
+						[
+							20,
+							22,
+							cr.plugins_.Function.prototype.exps.Param,
+							false,
+							null
+							,[
+[
+								0,
+								0
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					24,
+					cr.plugins_.Audio.prototype.acts.SetPaused,
+					null,
+					9098204136510507
+					,[
+					[
+						1,
+						[
+							2,
+							"s"
+						]
+					]
+,					[
+						3,
+						1
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				9881131480885289,
+				[
+				[
+					28,
+					cr.plugins_.Rex_Container.prototype.cnds.OnDestroyed,
+					null,
+					1,
+					false,
+					false,
+					false,
+					2067265752275683
+				]
+				],
+				[
+				[
+					-1,
+					cr.system_object.prototype.acts.CreateObject,
+					null,
+					3863560936086006
+					,[
+					[
+						4,
+						28
+					]
+,					[
+						5,
+						[
+							0,
+							1
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							0
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					7447632368560039
+					,[
+					[
+						11,
+						"dcn"
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					8031936887598186
+					,[
+					[
+						11,
+						"dsum"
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					1113881934670486
+					,[
+					[
+						11,
+						"psum1"
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					4365225331805442
+					,[
+					[
+						11,
+						"psum2"
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				146837160211202,
+				[
+				[
+					24,
+					cr.plugins_.Audio.prototype.cnds.PreloadsComplete,
+					null,
+					0,
+					false,
+					false,
+					false,
+					2290834440328203
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					3450108842460844
+					,[
+					[
+						11,
+						"preload"
+					]
+,					[
+						8,
+						0
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					24,
+					cr.plugins_.Audio.prototype.acts.Play,
+					null,
+					5763809411685194
+					,[
+					[
+						2,
+						["bj",false]
+					]
+,					[
+						3,
+						0
+					]
+,					[
+						0,
+						[
+							0,
+							0
+						]
+					]
+,					[
+						1,
+						[
+							2,
+							"s"
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					7961602159096129
+					,[
+					[
+						11,
+						"preload"
+					]
+,					[
+						7,
+						[
+							0,
+							1
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				3646433204393889,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.EveryTick,
+					null,
+					0,
+					false,
+					false,
+					false,
+					7740946399842562
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					2740820704988955
+					,[
+					[
+						11,
+						"soundstop"
+					]
+,					[
+						8,
+						4
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+				],
+				[
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					6074426993663027,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						3272808324427476
+						,[
+						[
+							7,
+							[
+								20,
+								24,
+								cr.plugins_.Audio.prototype.exps.PlaybackTime,
+								false,
+								null
+								,[
+[
+									2,
+									"s"
+								]
+								]
+							]
+						]
+,						[
+							8,
+							5
+						]
+,						[
+							7,
+							[
+								23,
+								"soundstop"
+							]
+						]
+						]
+					]
+					],
+					[
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						1678782930887962,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.CompareVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							7012913359170319
+							,[
+							[
+								11,
+								"soundloop"
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							6885372057882548
+							,[
+							[
+								11,
+								"soundstop"
+							]
+,							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+,						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							3880986318067269
+							,[
+							[
+								11,
+								"soundstart"
+							]
+,							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+,						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							8264622615851407
+							,[
+							[
+								11,
+								"soundloop"
+							]
+,							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+,						[
+							24,
+							cr.plugins_.Audio.prototype.acts.Seek,
+							null,
+							81915714851099
+							,[
+							[
+								1,
+								[
+									2,
+									"s"
+								]
+							]
+,							[
+								0,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+,						[
+							24,
+							cr.plugins_.Audio.prototype.acts.SetPaused,
+							null,
+							7737702502184851
+							,[
+							[
+								1,
+								[
+									2,
+									"s"
+								]
+							]
+,							[
+								3,
+								0
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						7141524788523852,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Else,
+							null,
+							0,
+							false,
+							false,
+							false,
+							8507793901005459
+						]
+						],
+						[
+						[
+							24,
+							cr.plugins_.Audio.prototype.acts.Seek,
+							null,
+							1100585654272746
+							,[
+							[
+								1,
+								[
+									2,
+									"s"
+								]
+							]
+,							[
+								0,
+								[
+									23,
+									"soundstart"
+								]
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				5757007649016189,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.EveryTick,
+					null,
+					0,
+					false,
+					false,
+					false,
+					5347557169519741
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					1190970749467234
+					,[
+					[
+						11,
+						"soundstop"
+					]
+,					[
+						8,
+						0
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					24,
+					cr.plugins_.Audio.prototype.cnds.IsAnyPlaying,
+					null,
+					0,
+					false,
+					false,
+					false,
+					8880931728196828
+				]
+				],
+				[
+				[
+					24,
+					cr.plugins_.Audio.prototype.acts.Seek,
+					null,
+					5656305269598299
+					,[
+					[
+						1,
+						[
+							2,
+							"s"
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					24,
+					cr.plugins_.Audio.prototype.acts.SetPaused,
+					null,
+					2698600801325151
+					,[
+					[
+						1,
+						[
+							2,
+							"s"
+						]
+					]
+,					[
+						3,
+						0
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				6595074341210974,
+				[
+				[
+					22,
+					cr.plugins_.Function.prototype.cnds.OnFunction,
+					null,
+					2,
+					false,
+					false,
+					false,
+					1730349805126226
+					,[
+					[
+						1,
+						[
+							2,
+							"setStatus"
+						]
+					]
+					]
+				]
+				],
+				[
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					4612007892980777,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						351644606637915
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								10
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						3422258584786658
+						,[
+						[
+							1,
+							[
+								2,
+								"checkWin"
+							]
+						]
+,						[
+							13,
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					7743241342382831,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						322409046999442
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								8
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1309903743642625
+						,[
+						[
+							11,
+							"act_hand"
+						]
+,						[
+							7,
+							[
+								0,
+								2
+							]
+						]
+						]
+					]
+,					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						4800841643066068
+						,[
+						[
+							1,
+							[
+								2,
+								"hit"
+							]
+						]
+,						[
+							13,
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					9756978781956648,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						8101244587349168
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								7
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						5363370905571039
+						,[
+						[
+							1,
+							[
+								2,
+								"stand"
+							]
+						]
+,						[
+							13,
+															[
+									7,
+									[
+										0,
+										1
+									]
+								]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					7635811335596539,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						8641231355496087
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								6
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						5212694912735691
+						,[
+						[
+							1,
+							[
+								2,
+								"stand"
+							]
+						]
+,						[
+							13,
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					5337628340398112,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						8520508453300012
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								9
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						9926725383453509
+						,[
+						[
+							1,
+							[
+								2,
+								"playSound"
+							]
+						]
+,						[
+							13,
+															[
+									7,
+									[
+										1,
+										12.28
+									]
+								]
+,
+								[
+									7,
+									[
+										1,
+										13.035
+									]
+								]
+,
+								[
+									7,
+									[
+										0,
+										0
+									]
+								]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					true,
+					2690952762068056,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						5818763579013855
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							2
+						]
+,						[
+							7,
+							[
+								0,
+								6
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						6902388632334495
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								9
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						7682354730225897
+						,[
+						[
+							11,
+							"status"
+						]
+,						[
+							7,
+							[
+								20,
+								22,
+								cr.plugins_.Function.prototype.exps.Param,
+								false,
+								null
+								,[
+[
+									0,
+									0
+								]
+								]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					8696697724242817,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.CompareVar,
+						null,
+						0,
+						false,
+						false,
+						false,
+						5778218494410415
+						,[
+						[
+							11,
+							"status"
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								9
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1967556417467337
+						,[
+						[
+							11,
+							"tmp_status"
+						]
+,						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps.tokenat
+								,[
+[
+									23,
+									"LastData"
+								]
+,[
+									0,
+									6
+								]
+,[
+									2,
+									"~"
+								]
+								]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					1281853845480042,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.CompareVar,
+						null,
+						0,
+						false,
+						false,
+						false,
+						5322811490823274
+						,[
+						[
+							11,
+							"status"
+						]
+,						[
+							8,
+							1
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						9901708139492144
+						,[
+						[
+							11,
+							"enable"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					2660536793296142,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.CompareVar,
+						null,
+						0,
+						false,
+						false,
+						false,
+						1297563165378165
+						,[
+						[
+							11,
+							"status"
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						25,
+						cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+						null,
+						9069041627154549
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								20,
+								21,
+								cr.plugins_.Arr.prototype.exps.At,
+								false,
+								null
+								,[
+[
+									0,
+									2
+								]
+								]
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						5947943571218841
+						,[
+						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						4,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						9419709883054458
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						5,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						8506540788693449
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						1,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						8149984137091192
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						2,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						4894420975928595
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			[true, "Game actions"],
+			false,
+			6810166120371184,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.IsGroupActive,
+				null,
+				0,
+				false,
+				false,
+				false,
+				6810166120371184
+				,[
+				[
+					1,
+					[
+						2,
+						"Game actions"
+					]
+				]
+				]
+			]
+			],
+			[
+			]
+			,[
+			[
+				0,
+				[true, "Send actions"],
+				false,
+				3034356119184729,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.IsGroupActive,
+					null,
+					0,
+					false,
+					false,
+					false,
+					3034356119184729
+					,[
+					[
+						1,
+						[
+							2,
+							"Send actions"
+						]
+					]
+					]
+				]
+				],
+				[
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					5846755580292256,
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.cnds.OnFunction,
+						null,
+						2,
+						false,
+						false,
+						false,
+						5913833114499569
+						,[
+						[
+							1,
+							[
+								2,
+								"Deal"
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						2524035260900515
+						,[
+						[
+							11,
+							"win1"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1380095601251583
+						,[
+						[
+							11,
+							"win2"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						281667719003159
+						,[
+						[
+							11,
+							"split"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1197977906001212
+						,[
+						[
+							11,
+							"double"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						2473178231580977
+						,[
+						[
+							11,
+							"ins"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1024191978882709
+						,[
+						[
+							11,
+							"dcn"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						8534555465387995
+						,[
+						[
+							11,
+							"dsoft"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						3596447521795296
+						,[
+						[
+							11,
+							"dsum"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						546961289391435
+						,[
+						[
+							11,
+							"LastData"
+						]
+,						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						6872192839991446
+						,[
+						[
+							11,
+							"lastdca"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						4379192808998922
+						,[
+						[
+							11,
+							"lastdcn"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						6916494881247017
+						,[
+						[
+							11,
+							"psum1"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1525741964240686
+						,[
+						[
+							11,
+							"psum2"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						7019897940527821
+						,[
+						[
+							11,
+							"txtStatus1"
+						]
+,						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						221290744691401
+						,[
+						[
+							11,
+							"txtStatus2"
+						]
+,						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						3525526250228845
+						,[
+						[
+							11,
+							"act_hand"
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						5765161439062681
+						,[
+						[
+							11,
+							"dCardX"
+						]
+,						[
+							7,
+							[
+								0,
+								145
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						7040294748121167
+						,[
+						[
+							11,
+							"dCardY"
+						]
+,						[
+							7,
+							[
+								0,
+								103
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						7655684936955376
+						,[
+						[
+							11,
+							"p1CardX"
+						]
+,						[
+							7,
+							[
+								0,
+								145
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						8344484766063446
+						,[
+						[
+							11,
+							"p1CardY"
+						]
+,						[
+							7,
+							[
+								0,
+								223
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						8380082635400122
+						,[
+						[
+							11,
+							"p2CardX"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						9072070692506119
+						,[
+						[
+							11,
+							"p2CardY"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						26,
+						cr.plugins_.Arr.prototype.acts.Clear,
+						null,
+						3729836069814295
+					]
+,					[
+						26,
+						cr.plugins_.Arr.prototype.acts.SetInstanceVar,
+						null,
+						1934915107791881
+						,[
+						[
+							10,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						4172128639862548
+						,[
+						[
+							11,
+							"bet"
+						]
+,						[
+							7,
+							[
+								20,
+								20,
+								cr.plugins_.Arr.prototype.exps.At,
+								false,
+								null
+								,[
+[
+									23,
+									"chip"
+								]
+								]
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1519121552064785
+						,[
+						[
+							11,
+							"balance"
+						]
+,						[
+							7,
+							[
+								5,
+								[
+									23,
+									"balance"
+								]
+								,[
+									23,
+									"bet"
+								]
+							]
+						]
+						]
+					]
+,					[
+						25,
+						cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+						null,
+						2311627879046105
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								20,
+								21,
+								cr.plugins_.Arr.prototype.exps.At,
+								false,
+								null
+								,[
+[
+									0,
+									0
+								]
+								]
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						1655419093524656
+						,[
+						[
+							7,
+							[
+								10,
+								[
+									2,
+									"Balance:  "
+								]
+								,[
+									23,
+									"balance"
+								]
+							]
+						]
+						]
+					]
+,					[
+						25,
+						cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+						null,
+						5786787446428909
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								20,
+								21,
+								cr.plugins_.Arr.prototype.exps.At,
+								false,
+								null
+								,[
+[
+									0,
+									1
+								]
+								]
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						1563740970087086
+						,[
+						[
+							7,
+							[
+								10,
+								[
+									2,
+									"Bet:  "
+								]
+								,[
+									23,
+									"bet"
+								]
+							]
+						]
+						]
+					]
+,					[
+						25,
+						cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+						null,
+						8793773771255425
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								20,
+								21,
+								cr.plugins_.Arr.prototype.exps.At,
+								false,
+								null
+								,[
+[
+									0,
+									2
+								]
+								]
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						4143331194892934
+						,[
+						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						6825549889511617
+						,[
+						[
+							1,
+							[
+								2,
+								"disable"
+							]
+						]
+,						[
+							13,
+						]
+						]
+					]
+,					[
+						23,
+						cr.plugins_.AJAX.prototype.acts.Post,
+						null,
+						5355132006326228
+						,[
+						[
+							1,
+							[
+								2,
+								"deal"
+							]
+						]
+,						[
+							1,
+							[
+								2,
+								"http://109.86.74.208/bj/game.php"
+							]
+						]
+,						[
+							1,
+							[
+								10,
+								[
+									2,
+									"action=deal&bet="
+								]
+								,[
+									23,
+									"bet"
+								]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					1328576954053088,
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.cnds.OnFunction,
+						null,
+						2,
+						false,
+						false,
+						false,
+						9939422533007903
+						,[
+						[
+							1,
+							[
+								2,
+								"disable"
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						847511754140802
+						,[
+						[
+							11,
+							"enable"
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+,					[
+						8,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						9038937760561066
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						6,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						9239324925689449
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						7,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						8927821933565022
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						9,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						572093257615389
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						14,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						5199648858831625
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						15,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						4543241862181611
+						,[
+						[
+							1,
+							[
+								2,
+								"s1"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					6264834810069773,
+					[
+					[
+						22,
+						cr.plugins_.Function.prototype.cnds.OnFunction,
+						null,
+						2,
+						false,
+						false,
+						false,
+						84620208296351
+						,[
+						[
+							1,
+							[
+								2,
+								"enable"
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						6734355935609712
+						,[
+						[
+							11,
+							"enable"
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+,					[
+						8,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						5737328389804152
+						,[
+						[
+							1,
+							[
+								2,
+								"s0"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						6,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						5878970809567047
+						,[
+						[
+							1,
+							[
+								2,
+								"s0"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						7,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						3707645911811963
+						,[
+						[
+							1,
+							[
+								2,
+								"s0"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						9,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						2211915302281709
+						,[
+						[
+							1,
+							[
+								2,
+								"s0"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						14,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						5761040900725267
+						,[
+						[
+							1,
+							[
+								2,
+								"s0"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						15,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						2650283388656581
+						,[
+						[
+							1,
+							[
+								2,
+								"s0"
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				[true, "AJAX compleate"],
+				false,
+				5714435465467001,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.IsGroupActive,
+					null,
+					0,
+					false,
+					false,
+					false,
+					5714435465467001
+					,[
+					[
+						1,
+						[
+							2,
+							"AJAX compleate"
+						]
+					]
+					]
+				]
+				],
+				[
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					3105166694455385,
+					[
+					[
+						23,
+						cr.plugins_.AJAX.prototype.cnds.OnComplete,
+						null,
+						1,
+						false,
+						false,
+						false,
+						9875831272210292
+						,[
+						[
+							1,
+							[
+								2,
+								"deal"
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						7839598883979694
+						,[
+						[
+							11,
+							"LastData"
+						]
+,						[
+							7,
+							[
+								20,
+								23,
+								cr.plugins_.AJAX.prototype.exps.LastData,
+								true,
+								null
+							]
+						]
+						]
+					]
+,					[
+						28,
+						cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+						null,
+						8705959986604179
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								0,
+								130
+							]
+						]
+,						[
+							0,
+							[
+								0,
+								142
+							]
+						]
+,						[
+							7,
+							[
+								0,
+								2
+							]
+						]
+						]
+					]
+,					[
+						21,
+						cr.plugins_.Arr.prototype.acts.SetX,
+						null,
+						1596095355279296
+						,[
+						[
+							0,
+							[
+								0,
+								5
+							]
+						]
+,						[
+							7,
+							[
+								20,
+								19,
+								cr.plugins_.Text.prototype.exps.UID,
+								false,
+								null
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.behaviors.Pin.prototype.acts.Pin,
+						"Pin",
+						7312884637990052
+						,[
+						[
+							4,
+							28
+						]
+,						[
+							3,
+							0
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontSize,
+						null,
+						6871145343378037
+						,[
+						[
+							0,
+							[
+								0,
+								12
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetWidth,
+						null,
+						1441089772077817
+						,[
+						[
+							0,
+							[
+								0,
+								50
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontColor,
+						null,
+						4941881583210634
+						,[
+						[
+							0,
+							[
+								19,
+								cr.system_object.prototype.exps.rgb
+								,[
+[
+									0,
+									255
+								]
+,[
+									0,
+									255
+								]
+,[
+									0,
+									0
+								]
+								]
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						1829110169500735
+						,[
+						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						28,
+						cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+						null,
+						6023274511192803
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								0,
+								130
+							]
+						]
+,						[
+							0,
+							[
+								0,
+								260
+							]
+						]
+,						[
+							7,
+							[
+								0,
+								2
+							]
+						]
+						]
+					]
+,					[
+						21,
+						cr.plugins_.Arr.prototype.acts.SetX,
+						null,
+						668486163369525
+						,[
+						[
+							0,
+							[
+								0,
+								4
+							]
+						]
+,						[
+							7,
+							[
+								20,
+								19,
+								cr.plugins_.Text.prototype.exps.UID,
+								false,
+								null
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.behaviors.Pin.prototype.acts.Pin,
+						"Pin",
+						1561502962158787
+						,[
+						[
+							4,
+							28
+						]
+,						[
+							3,
+							0
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontSize,
+						null,
+						2471118214850667
+						,[
+						[
+							0,
+							[
+								0,
+								12
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetWidth,
+						null,
+						2432811483914847
+						,[
+						[
+							0,
+							[
+								0,
+								50
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontColor,
+						null,
+						574330052602406
+						,[
+						[
+							0,
+							[
+								19,
+								cr.system_object.prototype.exps.rgb
+								,[
+[
+									0,
+									255
+								]
+,[
+									0,
+									255
+								]
+,[
+									0,
+									0
+								]
+								]
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						1241619820712923
+						,[
+						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						28,
+						cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+						null,
+						2166477333658692
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								0,
+								100
+							]
+						]
+,						[
+							0,
+							[
+								0,
+								161
+							]
+						]
+,						[
+							7,
+							[
+								0,
+								2
+							]
+						]
+						]
+					]
+,					[
+						21,
+						cr.plugins_.Arr.prototype.acts.SetX,
+						null,
+						4729089524553255
+						,[
+						[
+							0,
+							[
+								0,
+								6
+							]
+						]
+,						[
+							7,
+							[
+								20,
+								19,
+								cr.plugins_.Text.prototype.exps.UID,
+								false,
+								null
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.behaviors.Pin.prototype.acts.Pin,
+						"Pin",
+						1847270141405983
+						,[
+						[
+							4,
+							28
+						]
+,						[
+							3,
+							0
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontSize,
+						null,
+						1674372943671696
+						,[
+						[
+							0,
+							[
+								0,
+								10
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetWidth,
+						null,
+						1403190568823013
+						,[
+						[
+							0,
+							[
+								0,
+								100
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontColor,
+						null,
+						1965008266689094
+						,[
+						[
+							0,
+							[
+								19,
+								cr.system_object.prototype.exps.rgb
+								,[
+[
+									0,
+									255
+								]
+,[
+									0,
+									255
+								]
+,[
+									0,
+									0
+								]
+								]
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						5765715750545522
+						,[
+						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						6202391490855981
+						,[
+						[
+							1,
+							[
+								2,
+								"hitPlayerCard"
+							]
+						]
+,						[
+							13,
+															[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											23,
+											"LastData"
+										]
+,[
+											0,
+											0
+										]
+,[
+											2,
+											"~"
+										]
+										]
+									]
+								]
+,
+								[
+									7,
+									[
+										0,
+										0
+									]
+								]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.Wait,
+						null,
+						3244200256713368
+						,[
+						[
+							0,
+							[
+								1,
+								0.5
+							]
+						]
+						]
+					]
+,					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						2962940543227678
+						,[
+						[
+							1,
+							[
+								2,
+								"hitDealerCard"
+							]
+						]
+,						[
+							13,
+															[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											23,
+											"LastData"
+										]
+,[
+											0,
+											1
+										]
+,[
+											2,
+											"~"
+										]
+										]
+									]
+								]
+,
+								[
+									7,
+									[
+										0,
+										0
+									]
+								]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.Wait,
+						null,
+						4277891364439888
+						,[
+						[
+							0,
+							[
+								1,
+								0.5
+							]
+						]
+						]
+					]
+,					[
+						22,
+						cr.plugins_.Function.prototype.acts.CallFunction,
+						null,
+						2561734201583237
+						,[
+						[
+							1,
+							[
+								2,
+								"hitPlayerCard"
+							]
+						]
+,						[
+							13,
+															[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											23,
+											"LastData"
+										]
+,[
+											0,
+											2
+										]
+,[
+											2,
+											"~"
+										]
+										]
+									]
+								]
+,
+								[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											23,
+											"LastData"
+										]
+,[
+											0,
+											3
+										]
+,[
+											2,
+											"~"
+										]
+										]
+									]
+								]
+,
+								[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											23,
+											"LastData"
+										]
+,[
+											0,
+											5
+										]
+,[
+											2,
+											"~"
+										]
+										]
+									]
+								]
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			[true, "Animations"],
+			false,
+			5177567977291789,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.IsGroupActive,
+				null,
+				0,
+				false,
+				false,
+				false,
+				5177567977291789
+				,[
+				[
+					1,
+					[
+						2,
+						"Animations"
+					]
+				]
+				]
+			]
+			],
+			[
+			]
+			,[
+			[
+				0,
+				null,
+				false,
+				3691080522754295,
+				[
+				[
+					22,
+					cr.plugins_.Function.prototype.cnds.OnFunction,
+					null,
+					2,
+					false,
+					false,
+					false,
+					8917639798336692
+					,[
+					[
+						1,
+						[
+							2,
+							"hitPlayerCard"
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					-1,
+					cr.system_object.prototype.acts.CreateObject,
+					null,
+					7308672391172289
+					,[
+					[
+						4,
+						16
+					]
+,					[
+						5,
+						[
+							0,
+							2
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							350
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							110
+						]
+					]
+					]
+				]
+,				[
+					16,
+					cr.plugins_.Sprite.prototype.acts.SetInstanceVar,
+					null,
+					5552622094615951
+					,[
+					[
+						10,
+						0
+					]
+,					[
+						7,
+						[
+							10,
+							[
+								10,
+								[
+									10,
+									[
+										10,
+										[
+											20,
+											22,
+											cr.plugins_.Function.prototype.exps.Param,
+											false,
+											null
+											,[
+[
+												0,
+												0
+											]
+											]
+										]
+										,[
+											2,
+											","
+										]
+									]
+									,[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											1
+										]
+										]
+									]
+								]
+								,[
+									2,
+									","
+								]
+							]
+							,[
+								20,
+								22,
+								cr.plugins_.Function.prototype.exps.Param,
+								false,
+								null
+								,[
+[
+									0,
+									2
+								]
+								]
+							]
+						]
+					]
+					]
+				]
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					4340717491208202,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.CompareVar,
+						null,
+						0,
+						false,
+						false,
+						false,
+						3109309340196546
+						,[
+						[
+							11,
+							"split"
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						16,
+						cr.behaviors.Rex_MoveTo.prototype.acts.SetTargetPos,
+						"MoveTo",
+						897974830941502
+						,[
+						[
+							0,
+							[
+								23,
+								"p1CardX"
+							]
+						]
+,						[
+							0,
+							[
+								23,
+								"p1CardY"
+							]
+						]
+						]
+					]
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						3840335340410537,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Compare,
+							null,
+							0,
+							false,
+							false,
+							false,
+							4284394866675801
+							,[
+							[
+								7,
+								[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										1
+									]
+									]
+								]
+							]
+,							[
+								8,
+								1
+							]
+,							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							8391336939792561
+							,[
+							[
+								11,
+								"psum1"
+							]
+,							[
+								7,
+								[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										1
+									]
+									]
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						3959234324717968,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Else,
+							null,
+							0,
+							false,
+							false,
+							false,
+							2531924913221554
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							2138571547665778
+							,[
+							[
+								11,
+								"psum1"
+							]
+,							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											0
+										]
+										]
+									]
+,[
+										0,
+										3
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					9214336810778142,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Else,
+						null,
+						0,
+						false,
+						false,
+						false,
+						1872872343865417
+					]
+					],
+					[
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						5345241883821241,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.CompareVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							2300981173149646
+							,[
+							[
+								11,
+								"act_hand"
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									0,
+									1
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							9998271324740372
+							,[
+							[
+								11,
+								"psum1"
+							]
+,							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											0
+										]
+										]
+									]
+,[
+										0,
+										3
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+							]
+							]
+						]
+,						[
+							16,
+							cr.behaviors.Rex_MoveTo.prototype.acts.SetTargetPos,
+							"MoveTo",
+							9892386161313774
+							,[
+							[
+								0,
+								[
+									23,
+									"p1CardX"
+								]
+							]
+,							[
+								0,
+								[
+									23,
+									"p1CardY"
+								]
+							]
+							]
+						]
+						]
+						,[
+						[
+							0,
+							null,
+							false,
+							2375897097046863,
+							[
+							[
+								-1,
+								cr.system_object.prototype.cnds.Compare,
+								null,
+								0,
+								false,
+								false,
+								false,
+								3648918743136626
+								,[
+								[
+									7,
+									[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											1
+										]
+										]
+									]
+								]
+,								[
+									8,
+									1
+								]
+,								[
+									7,
+									[
+										0,
+										0
+									]
+								]
+								]
+							]
+							],
+							[
+							[
+								-1,
+								cr.system_object.prototype.acts.SetVar,
+								null,
+								8574114599461278
+								,[
+								[
+									11,
+									"psum1"
+								]
+,								[
+									7,
+									[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											1
+										]
+										]
+									]
+								]
+								]
+							]
+							]
+						]
+,						[
+							0,
+							null,
+							false,
+							8539248328697986,
+							[
+							[
+								-1,
+								cr.system_object.prototype.cnds.Else,
+								null,
+								0,
+								false,
+								false,
+								false,
+								2338185818590907
+							]
+							],
+							[
+							[
+								-1,
+								cr.system_object.prototype.acts.SetVar,
+								null,
+								1485843146166969
+								,[
+								[
+									11,
+									"psum1"
+								]
+,								[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											20,
+											22,
+											cr.plugins_.Function.prototype.exps.Param,
+											false,
+											null
+											,[
+[
+												0,
+												0
+											]
+											]
+										]
+,[
+											0,
+											3
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+								]
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						6546197708172427,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.CompareVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							5500656713847626
+							,[
+							[
+								11,
+								"act_hand"
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									0,
+									2
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							6780194627848557
+							,[
+							[
+								11,
+								"psum2"
+							]
+,							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											0
+										]
+										]
+									]
+,[
+										0,
+										3
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+							]
+							]
+						]
+,						[
+							16,
+							cr.behaviors.Rex_MoveTo.prototype.acts.SetTargetPos,
+							"MoveTo",
+							2796861509338188
+							,[
+							[
+								0,
+								[
+									23,
+									"p2CardX"
+								]
+							]
+,							[
+								0,
+								[
+									23,
+									"p2CardY"
+								]
+							]
+							]
+						]
+						]
+						,[
+						[
+							0,
+							null,
+							false,
+							3071832094020379,
+							[
+							[
+								-1,
+								cr.system_object.prototype.cnds.Compare,
+								null,
+								0,
+								false,
+								false,
+								false,
+								570243858512682
+								,[
+								[
+									7,
+									[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											1
+										]
+										]
+									]
+								]
+,								[
+									8,
+									1
+								]
+,								[
+									7,
+									[
+										0,
+										0
+									]
+								]
+								]
+							]
+							],
+							[
+							[
+								-1,
+								cr.system_object.prototype.acts.SetVar,
+								null,
+								161891697692597
+								,[
+								[
+									11,
+									"psum2"
+								]
+,								[
+									7,
+									[
+										20,
+										22,
+										cr.plugins_.Function.prototype.exps.Param,
+										false,
+										null
+										,[
+[
+											0,
+											1
+										]
+										]
+									]
+								]
+								]
+							]
+							]
+						]
+,						[
+							0,
+							null,
+							false,
+							5290377841587492,
+							[
+							[
+								-1,
+								cr.system_object.prototype.cnds.Else,
+								null,
+								0,
+								false,
+								false,
+								false,
+								3533053123170303
+							]
+							],
+							[
+							[
+								-1,
+								cr.system_object.prototype.acts.SetVar,
+								null,
+								128467439810014
+								,[
+								[
+									11,
+									"psum2"
+								]
+,								[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											20,
+											22,
+											cr.plugins_.Function.prototype.exps.Param,
+											false,
+											null
+											,[
+[
+												0,
+												0
+											]
+											]
+										]
+,[
+											0,
+											3
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+								]
+								]
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				3358782084001277,
+				[
+				[
+					22,
+					cr.plugins_.Function.prototype.cnds.OnFunction,
+					null,
+					2,
+					false,
+					false,
+					false,
+					6366945595222036
+					,[
+					[
+						1,
+						[
+							2,
+							"hitDealerCard"
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					-1,
+					cr.system_object.prototype.acts.CreateObject,
+					null,
+					3109530357748678
+					,[
+					[
+						4,
+						16
+					]
+,					[
+						5,
+						[
+							0,
+							2
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							350
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							110
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					8825444563491169
+					,[
+					[
+						11,
+						"dsum"
+					]
+,					[
+						7,
+						[
+							19,
+							cr.system_object.prototype.exps.tokenat
+							,[
+[
+								20,
+								22,
+								cr.plugins_.Function.prototype.exps.Param,
+								false,
+								null
+								,[
+[
+									0,
+									0
+								]
+								]
+							]
+,[
+								0,
+								3
+							]
+,[
+								2,
+								","
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					16,
+					cr.plugins_.Sprite.prototype.acts.SetInstanceVar,
+					null,
+					1119662733698809
+					,[
+					[
+						10,
+						0
+					]
+,					[
+						7,
+						[
+							10,
+							[
+								10,
+								[
+									20,
+									22,
+									cr.plugins_.Function.prototype.exps.Param,
+									false,
+									null
+									,[
+[
+										0,
+										0
+									]
+									]
+								]
+								,[
+									2,
+									","
+								]
+							]
+							,[
+								20,
+								22,
+								cr.plugins_.Function.prototype.exps.Param,
+								false,
+								null
+								,[
+[
+									0,
+									1
+								]
+								]
+							]
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.AddVar,
+					null,
+					4743613115478965
+					,[
+					[
+						11,
+						"dcn"
+					]
+,					[
+						7,
+						[
+							0,
+							1
+						]
+					]
+					]
+				]
+,				[
+					16,
+					cr.behaviors.Rex_MoveTo.prototype.acts.SetTargetPos,
+					"MoveTo",
+					4323353583016619
+					,[
+					[
+						0,
+						[
+							23,
+							"dCardX"
+						]
+					]
+,					[
+						0,
+						[
+							23,
+							"dCardY"
+						]
+					]
+					]
+				]
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					3520828473989855,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						3990514031705915
+						,[
+						[
+							7,
+							[
+								23,
+								"dsum"
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								2,
+								"11"
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1838595940541467
+						,[
+						[
+							11,
+							"dsoft"
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				964822312666847,
+				[
+				[
+					22,
+					cr.plugins_.Function.prototype.cnds.OnFunction,
+					null,
+					2,
+					false,
+					false,
+					false,
+					6183189203885225
+					,[
+					[
+						1,
+						[
+							2,
+							"hitDealerLastCards"
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					2817345307853707
+					,[
+					[
+						11,
+						"lastdca"
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.AddVar,
+					null,
+					5349180021532394
+					,[
+					[
+						11,
+						"lastdcn"
+					]
+,					[
+						7,
+						[
+							0,
+							-1
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.CreateObject,
+					null,
+					9367002777532877
+					,[
+					[
+						4,
+						16
+					]
+,					[
+						5,
+						[
+							0,
+							2
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							350
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							110
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					1680976498290601
+					,[
+					[
+						11,
+						"dsum"
+					]
+,					[
+						7,
+						[
+							19,
+							cr.system_object.prototype.exps.tokenat
+							,[
+[
+								19,
+								cr.system_object.prototype.exps.tokenat
+								,[
+[
+									23,
+									"LastData"
+								]
+,[
+									4,
+									[
+										0,
+										1
+									]
+									,[
+										23,
+										"dcn"
+									]
+								]
+,[
+									2,
+									"~"
+								]
+								]
+							]
+,[
+								0,
+								3
+							]
+,[
+								2,
+								","
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					16,
+					cr.plugins_.Sprite.prototype.acts.SetInstanceVar,
+					null,
+					8445971201391777
+					,[
+					[
+						10,
+						0
+					]
+,					[
+						7,
+						[
+							19,
+							cr.system_object.prototype.exps.tokenat
+							,[
+[
+								23,
+								"LastData"
+							]
+,[
+								4,
+								[
+									0,
+									1
+								]
+								,[
+									23,
+									"dcn"
+								]
+							]
+,[
+								2,
+								"~"
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.AddVar,
+					null,
+					2163714605953499
+					,[
+					[
+						11,
+						"dcn"
+					]
+,					[
+						7,
+						[
+							0,
+							1
+						]
+					]
+					]
+				]
+,				[
+					16,
+					cr.behaviors.Rex_MoveTo.prototype.acts.SetTargetPos,
+					"MoveTo",
+					6421013347146262
+					,[
+					[
+						0,
+						[
+							23,
+							"dCardX"
+						]
+					]
+,					[
+						0,
+						[
+							23,
+							"dCardY"
+						]
+					]
+					]
+				]
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					2050879964117708,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						7224380519111915
+						,[
+						[
+							7,
+							[
+								23,
+								"lastdcn"
+							]
+						]
+,						[
+							8,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								0
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						8233032492336169
+						,[
+						[
+							11,
+							"dsum"
+						]
+,						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps.tokenat
+								,[
+[
+									23,
+									"LastData"
+								]
+,[
+									4,
+									[
+										0,
+										1
+									]
+									,[
+										23,
+										"dcn"
+									]
+								]
+,[
+									2,
+									"~"
+								]
+								]
+							]
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				8416577968915708,
+				[
+				[
+					16,
+					cr.plugins_.Sprite.prototype.cnds.OnAnimFinished,
+					null,
+					1,
+					false,
+					false,
+					false,
+					3537026311618568
+					,[
+					[
+						1,
+						[
+							2,
+							"a"
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					28,
+					cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+					null,
+					1223975458889508
+					,[
+					[
+						4,
+						17
+					]
+,					[
+						0,
+						[
+							20,
+							16,
+							cr.plugins_.Sprite.prototype.exps.X,
+							false,
+							null
+						]
+					]
+,					[
+						0,
+						[
+							20,
+							16,
+							cr.plugins_.Sprite.prototype.exps.Y,
+							false,
+							null
+						]
+					]
+,					[
+						7,
+						[
+							0,
+							2
+						]
+					]
+					]
+				]
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					4830346704202331,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Compare,
+						null,
+						0,
+						false,
+						false,
+						false,
+						4282797271368739
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps["int"]
+								,[
+[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										21,
+										16,
+										true,
+										null
+										,0
+									]
+,[
+										0,
+										1
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+								]
+							]
+						]
+,						[
+							8,
+							4
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						17,
+						cr.plugins_.Sprite.prototype.acts.SetAnim,
+						null,
+						8930825455779832
+						,[
+						[
+							1,
+							[
+								19,
+								cr.system_object.prototype.exps.tokenat
+								,[
+[
+									21,
+									16,
+									true,
+									null
+									,0
+								]
+,[
+									0,
+									0
+								]
+,[
+									2,
+									","
+								]
+								]
+							]
+						]
+,						[
+							3,
+							1
+						]
+						]
+					]
+,					[
+						28,
+						cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+						null,
+						2051906223683851
+						,[
+						[
+							4,
+							19
+						]
+,						[
+							0,
+							[
+								5,
+								[
+									20,
+									17,
+									cr.plugins_.Sprite.prototype.exps.X,
+									false,
+									null
+								]
+								,[
+									0,
+									43
+								]
+							]
+						]
+,						[
+							0,
+							[
+								5,
+								[
+									20,
+									17,
+									cr.plugins_.Sprite.prototype.exps.Y,
+									false,
+									null
+								]
+								,[
+									0,
+									40
+								]
+							]
+						]
+,						[
+							7,
+							[
+								0,
+								2
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.behaviors.Pin.prototype.acts.Pin,
+						"Pin",
+						3713645165918705
+						,[
+						[
+							4,
+							17
+						]
+,						[
+							3,
+							0
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontFace,
+						null,
+						3750877478513444
+						,[
+						[
+							1,
+							[
+								2,
+								"Impact"
+							]
+						]
+,						[
+							3,
+							0
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontSize,
+						null,
+						6760765775207112
+						,[
+						[
+							0,
+							[
+								0,
+								12
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetWidth,
+						null,
+						4964434399291426
+						,[
+						[
+							0,
+							[
+								0,
+								50
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetFontColor,
+						null,
+						8805897787183589
+						,[
+						[
+							0,
+							[
+								19,
+								cr.system_object.prototype.exps.rgb
+								,[
+[
+									19,
+									cr.system_object.prototype.exps["int"]
+									,[
+[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											21,
+											16,
+											true,
+											null
+											,0
+										]
+,[
+											0,
+											2
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+									]
+								]
+,[
+									0,
+									0
+								]
+,[
+									0,
+									0
+								]
+								]
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						9486534886338552
+						,[
+						[
+							7,
+							[
+								19,
+								cr.system_object.prototype.exps.tokenat
+								,[
+[
+									21,
+									16,
+									true,
+									null
+									,0
+								]
+,[
+									0,
+									1
+								]
+,[
+									2,
+									","
+								]
+								]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					8968229291825171,
+					[
+					[
+						-1,
+						cr.system_object.prototype.cnds.Else,
+						null,
+						0,
+						false,
+						false,
+						false,
+						8310783965837199
+					]
+					],
+					[
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						9824594548535825,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Compare,
+							null,
+							0,
+							false,
+							false,
+							false,
+							9995644456438999
+							,[
+							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps["int"]
+									,[
+[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											21,
+											16,
+											true,
+											null
+											,0
+										]
+,[
+											0,
+											1
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+									]
+								]
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									0,
+									1
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							17,
+							cr.plugins_.Sprite.prototype.acts.SetAnim,
+							null,
+							5888512595654771
+							,[
+							[
+								1,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										21,
+										16,
+										true,
+										null
+										,0
+									]
+,[
+										0,
+										0
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+							]
+,							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							28,
+							cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+							null,
+							146558016989513
+							,[
+							[
+								4,
+								19
+							]
+,							[
+								0,
+								[
+									5,
+									[
+										20,
+										16,
+										cr.plugins_.Sprite.prototype.exps.X,
+										false,
+										null
+									]
+									,[
+										0,
+										43
+									]
+								]
+							]
+,							[
+								0,
+								[
+									5,
+									[
+										20,
+										16,
+										cr.plugins_.Sprite.prototype.exps.Y,
+										false,
+										null
+									]
+									,[
+										0,
+										40
+									]
+								]
+							]
+,							[
+								7,
+								[
+									0,
+									2
+								]
+							]
+							]
+						]
+,						[
+							19,
+							cr.behaviors.Pin.prototype.acts.Pin,
+							"Pin",
+							4574242099811635
+							,[
+							[
+								4,
+								17
+							]
+,							[
+								3,
+								0
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetFontFace,
+							null,
+							3609704471569201
+							,[
+							[
+								1,
+								[
+									2,
+									"Impact"
+								]
+							]
+,							[
+								3,
+								0
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetFontSize,
+							null,
+							6012907053131972
+							,[
+							[
+								0,
+								[
+									0,
+									12
+								]
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetWidth,
+							null,
+							5489178209376442
+							,[
+							[
+								0,
+								[
+									0,
+									50
+								]
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetFontColor,
+							null,
+							8562130639680954
+							,[
+							[
+								0,
+								[
+									19,
+									cr.system_object.prototype.exps.rgb
+									,[
+[
+										19,
+										cr.system_object.prototype.exps["int"]
+										,[
+[
+											19,
+											cr.system_object.prototype.exps.tokenat
+											,[
+[
+												21,
+												16,
+												true,
+												null
+												,0
+											]
+,[
+												0,
+												2
+											]
+,[
+												2,
+												","
+											]
+											]
+										]
+										]
+									]
+,[
+										0,
+										0
+									]
+,[
+										0,
+										0
+									]
+									]
+								]
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetText,
+							null,
+							3965203288217632
+							,[
+							[
+								7,
+								[
+									2,
+									"A"
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						5051967040713356,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Else,
+							null,
+							0,
+							false,
+							false,
+							false,
+							8455202683903351
+						]
+						],
+						[
+						[
+							17,
+							cr.plugins_.Sprite.prototype.acts.SetAnim,
+							null,
+							3901146038795441
+							,[
+							[
+								1,
+								[
+									10,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											21,
+											16,
+											true,
+											null
+											,0
+										]
+,[
+											0,
+											0
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+									,[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											21,
+											16,
+											true,
+											null
+											,0
+										]
+,[
+											0,
+											1
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+								]
+							]
+,							[
+								3,
+								0
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					6044042076382348,
+					[
+					[
+						16,
+						cr.plugins_.Sprite.prototype.cnds.CompareY,
+						null,
+						0,
+						false,
+						false,
+						false,
+						2515905297688786
+						,[
+						[
+							8,
+							4
+						]
+,						[
+							0,
+							[
+								0,
+								200
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						26,
+						cr.plugins_.Arr.prototype.acts.SetX,
+						null,
+						9481848854433563
+						,[
+						[
+							0,
+							[
+								21,
+								26,
+								false,
+								null
+								,0
+							]
+						]
+,						[
+							7,
+							[
+								20,
+								17,
+								cr.plugins_.Sprite.prototype.exps.UID,
+								false,
+								null
+							]
+						]
+						]
+					]
+,					[
+						26,
+						cr.plugins_.Arr.prototype.acts.AddInstanceVar,
+						null,
+						3373697700865749
+						,[
+						[
+							10,
+							0
+						]
+,						[
+							7,
+							[
+								0,
+								1
+							]
+						]
+						]
+					]
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						3310341692422244,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Compare,
+							null,
+							0,
+							false,
+							false,
+							false,
+							9001120356627415
+							,[
+							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										21,
+										16,
+										true,
+										null
+										,0
+									]
+,[
+										0,
+										4
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									2,
+									"0"
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							25,
+							cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+							null,
+							3289565249830877
+							,[
+							[
+								4,
+								19
+							]
+,							[
+								0,
+								[
+									20,
+									21,
+									cr.plugins_.Arr.prototype.exps.At,
+									false,
+									null
+									,[
+[
+										0,
+										4
+									]
+									]
+								]
+							]
+,							[
+								3,
+								1
+							]
+							]
+						]
+,						[
+							19,
+							cr.behaviors.Pin.prototype.acts.Pin,
+							"Pin",
+							5775138804865441
+							,[
+							[
+								4,
+								17
+							]
+,							[
+								3,
+								0
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetText,
+							null,
+							2976391366088335
+							,[
+							[
+								7,
+								[
+									23,
+									"psum1"
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						8780259856899761,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Else,
+							null,
+							0,
+							false,
+							false,
+							false,
+							6862703147374702
+						]
+						],
+						[
+						]
+						,[
+						[
+							0,
+							null,
+							false,
+							2432282713326377,
+							[
+							[
+								-1,
+								cr.system_object.prototype.cnds.CompareVar,
+								null,
+								0,
+								false,
+								false,
+								false,
+								2921162397468157
+								,[
+								[
+									11,
+									"act_hand"
+								]
+,								[
+									8,
+									0
+								]
+,								[
+									7,
+									[
+										0,
+										2
+									]
+								]
+								]
+							]
+							],
+							[
+							[
+								25,
+								cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+								null,
+								7627720061620562
+								,[
+								[
+									4,
+									19
+								]
+,								[
+									0,
+									[
+										20,
+										21,
+										cr.plugins_.Arr.prototype.exps.At,
+										false,
+										null
+										,[
+[
+											0,
+											7
+										]
+										]
+									]
+								]
+,								[
+									3,
+									1
+								]
+								]
+							]
+,							[
+								19,
+								cr.plugins_.Text.prototype.acts.SetText,
+								null,
+								7798691744178939
+								,[
+								[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											21,
+											16,
+											true,
+											null
+											,0
+										]
+,[
+											0,
+											4
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+								]
+								]
+							]
+							]
+						]
+,						[
+							0,
+							null,
+							false,
+							7499638113774575,
+							[
+							[
+								-1,
+								cr.system_object.prototype.cnds.CompareVar,
+								null,
+								0,
+								false,
+								false,
+								false,
+								2881042368830179
+								,[
+								[
+									11,
+									"act_hand"
+								]
+,								[
+									8,
+									0
+								]
+,								[
+									7,
+									[
+										0,
+										1
+									]
+								]
+								]
+							]
+							],
+							[
+							[
+								25,
+								cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+								null,
+								6854185979726216
+								,[
+								[
+									4,
+									19
+								]
+,								[
+									0,
+									[
+										20,
+										21,
+										cr.plugins_.Arr.prototype.exps.At,
+										false,
+										null
+										,[
+[
+											0,
+											4
+										]
+										]
+									]
+								]
+,								[
+									3,
+									1
+								]
+								]
+							]
+,							[
+								19,
+								cr.plugins_.Text.prototype.acts.SetText,
+								null,
+								1494732713980121
+								,[
+								[
+									7,
+									[
+										19,
+										cr.system_object.prototype.exps.tokenat
+										,[
+[
+											21,
+											16,
+											true,
+											null
+											,0
+										]
+,[
+											0,
+											4
+										]
+,[
+											2,
+											","
+										]
+										]
+									]
+								]
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						381819952383082,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Compare,
+							null,
+							0,
+							false,
+							false,
+							false,
+							9458255700053233
+							,[
+							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										21,
+										16,
+										true,
+										null
+										,0
+									]
+,[
+										0,
+										5
+									]
+,[
+										2,
+										","
+									]
+									]
+								]
+							]
+,							[
+								8,
+								1
+							]
+,							[
+								7,
+								[
+									2,
+									""
+								]
+							]
+							]
+						]
+,						[
+							26,
+							cr.plugins_.Arr.prototype.cnds.CompareInstanceVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							2704002845910511
+							,[
+							[
+								10,
+								0
+							]
+,							[
+								8,
+								1
+							]
+,							[
+								7,
+								[
+									0,
+									2
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							22,
+							cr.plugins_.Function.prototype.acts.CallFunction,
+							null,
+							8900955770614719
+							,[
+							[
+								1,
+								[
+									2,
+									"setStatus"
+								]
+							]
+,							[
+								13,
+																	[
+										7,
+										[
+											19,
+											cr.system_object.prototype.exps.tokenat
+											,[
+[
+												21,
+												16,
+												true,
+												null
+												,0
+											]
+,[
+												0,
+												5
+											]
+,[
+												2,
+												","
+											]
+											]
+										]
+									]
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					4753098998963228,
+					[
+					[
+						16,
+						cr.plugins_.Sprite.prototype.cnds.CompareY,
+						null,
+						0,
+						false,
+						false,
+						false,
+						7580421006451937
+						,[
+						[
+							8,
+							2
+						]
+,						[
+							0,
+							[
+								0,
+								200
+							]
+						]
+						]
+					]
+,					[
+						19,
+						cr.plugins_.Text.prototype.cnds.PickByUID,
+						null,
+						0,
+						false,
+						false,
+						true,
+						2370998577776977
+						,[
+						[
+							0,
+							[
+								20,
+								21,
+								cr.plugins_.Arr.prototype.exps.At,
+								false,
+								null
+								,[
+[
+									0,
+									5
+								]
+								]
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						19,
+						cr.plugins_.Text.prototype.acts.SetText,
+						null,
+						4869062902193776
+						,[
+						[
+							7,
+							[
+								23,
+								"dsum"
+							]
+						]
+						]
+					]
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						333395229294479,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Compare,
+							null,
+							0,
+							false,
+							false,
+							false,
+							4730064035938992
+							,[
+							[
+								7,
+								[
+									23,
+									"lastdcn"
+								]
+							]
+,							[
+								8,
+								4
+							]
+,							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							8556974247527293
+							,[
+							[
+								11,
+								"lastdca"
+							]
+,							[
+								7,
+								[
+									0,
+									1
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						9407608674421265,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.Else,
+							null,
+							0,
+							false,
+							false,
+							false,
+							6876133692954441
+						]
+,						[
+							-1,
+							cr.system_object.prototype.cnds.CompareVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							8931683236581912
+							,[
+							[
+								11,
+								"dcn"
+							]
+,							[
+								8,
+								5
+							]
+,							[
+								7,
+								[
+									0,
+									2
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							22,
+							cr.plugins_.Function.prototype.acts.CallFunction,
+							null,
+							5416816713523783
+							,[
+							[
+								1,
+								[
+									2,
+									"checkWin"
+								]
+							]
+,							[
+								13,
+							]
+							]
+						]
+,						[
+							22,
+							cr.plugins_.Function.prototype.acts.CallFunction,
+							null,
+							5250902074868938
+							,[
+							[
+								1,
+								[
+									2,
+									"playSound"
+								]
+							]
+,							[
+								13,
+																	[
+										7,
+										[
+											23,
+											"soundstart"
+										]
+									]
+,
+									[
+										7,
+										[
+											23,
+											"soundstop"
+										]
+									]
+,
+									[
+										7,
+										[
+											0,
+											0
+										]
+									]
+							]
+							]
+						]
+,						[
+							19,
+							cr.plugins_.Text.prototype.acts.SetText,
+							null,
+							8457647175571132
+							,[
+							[
+								7,
+								[
+									23,
+									"dsum"
+								]
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					9740315206014923,
+					[
+					],
+					[
+					[
+						16,
+						cr.plugins_.Sprite.prototype.acts.SetInstanceVar,
+						null,
+						1640325173834559
+						,[
+						[
+							10,
+							0
+						]
+,						[
+							7,
+							[
+								2,
+								""
+							]
+						]
+						]
+					]
+,					[
+						16,
+						cr.plugins_.Sprite.prototype.acts.Destroy,
+						null,
+						6391224276076034
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				9800992803204236,
+				[
+				[
+					16,
+					cr.behaviors.Rex_MoveTo.prototype.cnds.OnHitTarget,
+					"MoveTo",
+					1,
+					false,
+					false,
+					false,
+					539484667280316
+				]
+				],
+				[
+				[
+					16,
+					cr.plugins_.Sprite.prototype.acts.SetAnimSpeed,
+					null,
+					3734108578410639
+					,[
+					[
+						0,
+						[
+							0,
+							35
+						]
+					]
+					]
+				]
+,				[
+					22,
+					cr.plugins_.Function.prototype.acts.CallFunction,
+					null,
+					7616255220962369
+					,[
+					[
+						1,
+						[
+							2,
+							"playSound"
+						]
+					]
+,					[
+						13,
+													[
+								7,
+								[
+									1,
+									6.24
+								]
+							]
+,
+							[
+								7,
+								[
+									1,
+									6.56
+								]
+							]
+,
+							[
+								7,
+								[
+									0,
+									0
+								]
+							]
+					]
+					]
+				]
+				]
+				,[
+				[
+					0,
+					null,
+					false,
+					5798667169486474,
+					[
+					[
+						16,
+						cr.plugins_.Sprite.prototype.cnds.CompareY,
+						null,
+						0,
+						false,
+						false,
+						false,
+						5069251744784442
+						,[
+						[
+							8,
+							4
+						]
+,						[
+							0,
+							[
+								0,
+								200
+							]
+						]
+						]
+					]
+					],
+					[
+					]
+					,[
+					[
+						0,
+						null,
+						false,
+						3223372090232233,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.CompareVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							1221778909072606
+							,[
+							[
+								11,
+								"act_hand"
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									0,
+									1
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							3786038483961825
+							,[
+							[
+								11,
+								"p1CardX"
+							]
+,							[
+								7,
+								[
+									4,
+									[
+										20,
+										16,
+										cr.plugins_.Sprite.prototype.exps.X,
+										false,
+										null
+									]
+									,[
+										0,
+										15
+									]
+								]
+							]
+							]
+						]
+,						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							7963946329542152
+							,[
+							[
+								11,
+								"p1CardY"
+							]
+,							[
+								7,
+								[
+									4,
+									[
+										20,
+										16,
+										cr.plugins_.Sprite.prototype.exps.Y,
+										false,
+										null
+									]
+									,[
+										0,
+										3
+									]
+								]
+							]
+							]
+						]
+						]
+					]
+,					[
+						0,
+						null,
+						false,
+						3387487799382124,
+						[
+						[
+							-1,
+							cr.system_object.prototype.cnds.CompareVar,
+							null,
+							0,
+							false,
+							false,
+							false,
+							3840935251704869
+							,[
+							[
+								11,
+								"act_hand"
+							]
+,							[
+								8,
+								0
+							]
+,							[
+								7,
+								[
+									0,
+									2
+								]
+							]
+							]
+						]
+						],
+						[
+						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							9222252545931977
+							,[
+							[
+								11,
+								"p2CardX"
+							]
+,							[
+								7,
+								[
+									4,
+									[
+										20,
+										16,
+										cr.plugins_.Sprite.prototype.exps.X,
+										false,
+										null
+									]
+									,[
+										0,
+										15
+									]
+								]
+							]
+							]
+						]
+,						[
+							-1,
+							cr.system_object.prototype.acts.SetVar,
+							null,
+							5684525956930233
+							,[
+							[
+								11,
+								"p2CardY"
+							]
+,							[
+								7,
+								[
+									4,
+									[
+										20,
+										16,
+										cr.plugins_.Sprite.prototype.exps.Y,
+										false,
+										null
+									]
+									,[
+										0,
+										3
+									]
+								]
+							]
+							]
+						]
+						]
+					]
+					]
+				]
+,				[
+					0,
+					null,
+					false,
+					8556764124152264,
+					[
+					[
+						16,
+						cr.plugins_.Sprite.prototype.cnds.CompareY,
+						null,
+						0,
+						false,
+						false,
+						false,
+						4966413981499191
+						,[
+						[
+							8,
+							2
+						]
+,						[
+							0,
+							[
+								0,
+								200
+							]
+						]
+						]
+					]
+					],
+					[
+					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						6678686980855005
+						,[
+						[
+							11,
+							"dCardX"
+						]
+,						[
+							7,
+							[
+								4,
+								[
+									20,
+									16,
+									cr.plugins_.Sprite.prototype.exps.X,
+									false,
+									null
+								]
+								,[
+									0,
+									15
+								]
+							]
+						]
+						]
+					]
+,					[
+						-1,
+						cr.system_object.prototype.acts.SetVar,
+						null,
+						1251445307412089
+						,[
+						[
+							11,
+							"dCardY"
+						]
+,						[
+							7,
+							[
+								4,
+								[
+									20,
+									16,
+									cr.plugins_.Sprite.prototype.exps.Y,
+									false,
+									null
+								]
+								,[
+									0,
+									3
+								]
+							]
+						]
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				54984570839041,
+				[
+				[
+					17,
+					cr.behaviors.Rex_MoveTo.prototype.cnds.OnHitTarget,
+					"MoveTo",
+					1,
+					false,
+					false,
+					false,
+					7959079581739045
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.Compare,
+					null,
+					0,
+					false,
+					false,
+					false,
+					4469941341714447
+					,[
+					[
+						7,
+						[
+							20,
+							17,
+							cr.plugins_.Sprite.prototype.exps.UID,
+							false,
+							null
+						]
+					]
+,					[
+						8,
+						0
+					]
+,					[
+						7,
+						[
+							20,
+							26,
+							cr.plugins_.Arr.prototype.exps.At,
+							false,
+							null
+							,[
+[
+								0,
+								1
+							]
+							]
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					4134085090299888
+					,[
+					[
+						11,
+						"p1CardX"
+					]
+,					[
+						7,
+						[
+							4,
+							[
+								20,
+								17,
+								cr.plugins_.Sprite.prototype.exps.X,
+								false,
+								null
+							]
+							,[
+								0,
+								15
+							]
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					4923126624837185
+					,[
+					[
+						11,
+						"p1CardY"
+					]
+,					[
+						7,
+						[
+							4,
+							[
+								20,
+								17,
+								cr.plugins_.Sprite.prototype.exps.Y,
+								false,
+								null
+							]
+							,[
+								0,
+								3
+							]
+						]
+					]
+					]
+				]
+,				[
+					25,
+					cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+					null,
+					6017072981015242
+					,[
+					[
+						4,
+						17
+					]
+,					[
+						0,
+						[
+							20,
+							26,
+							cr.plugins_.Arr.prototype.exps.At,
+							false,
+							null
+							,[
+[
+								0,
+								2
+							]
+							]
+						]
+					]
+,					[
+						3,
+						1
+					]
+					]
+				]
+,				[
+					28,
+					cr.plugins_.Rex_Container.prototype.acts.CreateInsts,
+					null,
+					7735463969054416
+					,[
+					[
+						4,
+						19
+					]
+,					[
+						0,
+						[
+							5,
+							[
+								20,
+								17,
+								cr.plugins_.Sprite.prototype.exps.X,
+								false,
+								null
+							]
+							,[
+								0,
+								15
+							]
+						]
+					]
+,					[
+						0,
+						[
+							0,
+							260
+						]
+					]
+,					[
+						7,
+						[
+							0,
+							2
+						]
+					]
+					]
+				]
+,				[
+					21,
+					cr.plugins_.Arr.prototype.acts.SetX,
+					null,
+					3860757610194743
+					,[
+					[
+						0,
+						[
+							0,
+							7
+						]
+					]
+,					[
+						7,
+						[
+							20,
+							19,
+							cr.plugins_.Text.prototype.exps.UID,
+							false,
+							null
+						]
+					]
+					]
+				]
+,				[
+					19,
+					cr.behaviors.Pin.prototype.acts.Pin,
+					"Pin",
+					6460248848148635
+					,[
+					[
+						4,
+						17
+					]
+,					[
+						3,
+						0
+					]
+					]
+				]
+,				[
+					19,
+					cr.plugins_.Text.prototype.acts.SetFontSize,
+					null,
+					8496548487485709
+					,[
+					[
+						0,
+						[
+							0,
+							12
+						]
+					]
+					]
+				]
+,				[
+					19,
+					cr.plugins_.Text.prototype.acts.SetWidth,
+					null,
+					1169244570713693
+					,[
+					[
+						0,
+						[
+							0,
+							50
+						]
+					]
+					]
+				]
+,				[
+					19,
+					cr.plugins_.Text.prototype.acts.SetFontColor,
+					null,
+					6280585607414376
+					,[
+					[
+						0,
+						[
+							19,
+							cr.system_object.prototype.exps.rgb
+							,[
+[
+								0,
+								255
+							]
+,[
+								0,
+								255
+							]
+,[
+								0,
+								0
+							]
+							]
+						]
+					]
+					]
+				]
+,				[
+					19,
+					cr.plugins_.Text.prototype.acts.SetText,
+					null,
+					5477016122773766
+					,[
+					[
+						7,
+						[
+							23,
+							"psum2"
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					4530336705958304
+					,[
+					[
+						11,
+						"p2CardX"
+					]
+,					[
+						7,
+						[
+							4,
+							[
+								20,
+								17,
+								cr.plugins_.Sprite.prototype.exps.X,
+								false,
+								null
+							]
+							,[
+								0,
+								15
+							]
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					1552645728785524
+					,[
+					[
+						11,
+						"p2CardY"
+					]
+,					[
+						7,
+						[
+							4,
+							[
+								20,
+								17,
+								cr.plugins_.Sprite.prototype.exps.Y,
+								false,
+								null
+							]
+							,[
+								0,
+								3
+							]
+						]
+					]
+					]
+				]
+,				[
+					22,
+					cr.plugins_.Function.prototype.acts.CallFunction,
+					null,
+					8798447996532724
+					,[
+					[
+						1,
+						[
+							2,
+							"hitPlayerCard"
+						]
+					]
+,					[
+						13,
+													[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										23,
+										"LastData"
+									]
+,[
+										0,
+										0
+									]
+,[
+										2,
+										"~"
+									]
+									]
+								]
+							]
+,
+							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										23,
+										"LastData"
+									]
+,[
+										0,
+										1
+									]
+,[
+										2,
+										"~"
+									]
+									]
+								]
+							]
+,
+							[
+								7,
+								[
+									19,
+									cr.system_object.prototype.exps.tokenat
+									,[
+[
+										23,
+										"LastData"
+									]
+,[
+										0,
+										2
+									]
+,[
+										2,
+										"~"
+									]
+									]
+								]
+							]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				346938030425841,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					945783845880466
+					,[
+					[
+						11,
+						"lastdcn"
+					]
+,					[
+						8,
+						4
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					6879589314869337
+					,[
+					[
+						11,
+						"lastdca"
+					]
+,					[
+						8,
+						0
+					]
+,					[
+						7,
+						[
+							0,
+							1
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.Every,
+					null,
+					0,
+					false,
+					false,
+					false,
+					8013499345025006
+					,[
+					[
+						0,
+						[
+							1,
+							0.25
+						]
+					]
+					]
+				]
+,				[
+					24,
+					cr.plugins_.Audio.prototype.cnds.IsAnyPlaying,
+					null,
+					0,
+					false,
+					true,
+					false,
+					2998711219922637
+				]
+				],
+				[
+				[
+					22,
+					cr.plugins_.Function.prototype.acts.CallFunction,
+					null,
+					4713878914725255
+					,[
+					[
+						1,
+						[
+							2,
+							"hitDealerLastCards"
+						]
+					]
+,					[
+						13,
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				1886938150900228,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.EveryTick,
+					null,
+					0,
+					false,
+					false,
+					false,
+					6188510779852155
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					9011249943537635
+					,[
+					[
+						11,
+						"status"
+					]
+,					[
+						8,
+						0
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					9774676399874733
+					,[
+					[
+						11,
+						"txtStatus1"
+					]
+,					[
+						8,
+						1
+					]
+,					[
+						7,
+						[
+							2,
+							""
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					25,
+					cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+					null,
+					6339449382216014
+					,[
+					[
+						4,
+						19
+					]
+,					[
+						0,
+						[
+							20,
+							21,
+							cr.plugins_.Arr.prototype.exps.At,
+							false,
+							null
+							,[
+[
+								0,
+								6
+							]
+							]
+						]
+					]
+,					[
+						3,
+						1
+					]
+					]
+				]
+,				[
+					19,
+					cr.plugins_.Text.prototype.acts.SetText,
+					null,
+					7013047448750392
+					,[
+					[
+						7,
+						[
+							23,
+							"txtStatus1"
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					3852402750268585
+					,[
+					[
+						11,
+						"txtStatus1"
+					]
+,					[
+						7,
+						[
+							2,
+							""
+						]
+					]
+					]
+				]
+				]
+			]
+,			[
+				0,
+				null,
+				false,
+				8178269759858226,
+				[
+				[
+					-1,
+					cr.system_object.prototype.cnds.EveryTick,
+					null,
+					0,
+					false,
+					false,
+					false,
+					5259458242395863
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					8172721741707193
+					,[
+					[
+						11,
+						"status"
+					]
+,					[
+						8,
+						0
+					]
+,					[
+						7,
+						[
+							0,
+							0
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.cnds.CompareVar,
+					null,
+					0,
+					false,
+					false,
+					false,
+					1988057222250291
+					,[
+					[
+						11,
+						"txtStatus2"
+					]
+,					[
+						8,
+						1
+					]
+,					[
+						7,
+						[
+							2,
+							""
+						]
+					]
+					]
+				]
+				],
+				[
+				[
+					25,
+					cr.plugins_.Rex_SysExt.prototype.acts.PickByUID,
+					null,
+					2191850744790715
+					,[
+					[
+						4,
+						19
+					]
+,					[
+						0,
+						[
+							20,
+							21,
+							cr.plugins_.Arr.prototype.exps.At,
+							false,
+							null
+							,[
+[
+								0,
+								6
+							]
+							]
+						]
+					]
+,					[
+						3,
+						1
+					]
+					]
+				]
+,				[
+					19,
+					cr.plugins_.Text.prototype.acts.SetText,
+					null,
+					3526636350529865
+					,[
+					[
+						7,
+						[
+							23,
+							"txtStatus2"
+						]
+					]
+					]
+				]
+,				[
+					-1,
+					cr.system_object.prototype.acts.SetVar,
+					null,
+					4153718574262638
+					,[
+					[
+						11,
+						"txtStatus2"
+					]
+,					[
+						7,
+						[
+							2,
+							""
+						]
+					]
+					]
+				]
+				]
+			]
+			]
+		]
 		]
 	]
 	],
@@ -18824,12 +30434,12 @@ false,false,1247528663516111
 	true,
 	true,
 	true,
-	"1.4.7.0",
+	"1.5.0.0",
 	1,
 	false,
 	0,
 	false,
-	23,
+	29,
 	false,
 	[
 	]
