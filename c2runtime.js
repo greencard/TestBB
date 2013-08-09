@@ -13537,7 +13537,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 			return;
@@ -13550,7 +13550,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13571,7 +13571,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13590,7 +13590,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 			return;
@@ -13603,7 +13603,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13624,7 +13624,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13664,7 +13664,7 @@ cr.plugins_.Audio = function(runtime)
 		if (silent)
 			return;
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		if (api === API_APPMOBI)
 		{
 			if (this.runtime.isDirectCanvas)
@@ -13684,7 +13684,7 @@ cr.plugins_.Audio = function(runtime)
 		if (silent)
 			return;
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
 		if (api === API_APPMOBI)
 		{
 			if (this.runtime.isDirectCanvas)
@@ -13806,7 +13806,7 @@ cr.plugins_.Audio = function(runtime)
 		if (api !== API_WEBAUDIO)
 			return;
 		var doNormalize = (norm === 0);
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
 		var b = this.getAudioBuffer(src, false);
 		tag = tag.toLowerCase();
 		mix = mix / 100;
@@ -36212,456 +36212,6 @@ false,false,4969725124143742
 					]
 					]
 				]
-,				[
-					9,
-					cr.plugins_.Audio.prototype.acts.Play,
-					null,
-					2944275731924181
-					,[
-					[
-						2,
-						["bj2",true]
-					]
-,					[
-						3,
-						0
-					]
-,					[
-						0,
-						[
-							0,
-							0
-						]
-					]
-,					[
-						1,
-						[
-							2,
-							"s"
-						]
-					]
-					]
-				]
-,				[
-					9,
-					cr.plugins_.Audio.prototype.acts.Seek,
-					null,
-					1924015706823209
-					,[
-					[
-						1,
-						[
-							2,
-							"s"
-						]
-					]
-,					[
-						0,
-						[
-							20,
-							23,
-							cr.plugins_.Function.prototype.exps.Param,
-							false,
-							null
-							,[
-[
-								0,
-								0
-							]
-							]
-						]
-					]
-					]
-				]
-				]
-			]
-,			[
-				0,
-				null,
-				false,
-				374260400556204,
-				[
-				[
-					9,
-					cr.plugins_.Audio.prototype.cnds.PreloadsComplete,
-					null,
-					0,
-					false,
-					false,
-					false,
-					9115273692429779
-				]
-,				[
-					-1,
-					cr.system_object.prototype.cnds.CompareVar,
-					null,
-					0,
-					false,
-					false,
-					false,
-					9121189975391164
-					,[
-					[
-						11,
-						"preload"
-					]
-,					[
-						8,
-						0
-					]
-,					[
-						7,
-						[
-							0,
-							0
-						]
-					]
-					]
-				]
-				],
-				[
-				[
-					-1,
-					cr.system_object.prototype.acts.SetVar,
-					null,
-					6041399544925019
-					,[
-					[
-						11,
-						"preload"
-					]
-,					[
-						7,
-						[
-							0,
-							1
-						]
-					]
-					]
-				]
-				]
-			]
-,			[
-				0,
-				null,
-				false,
-				4465716122160077,
-				[
-				[
-					-1,
-					cr.system_object.prototype.cnds.EveryTick,
-					null,
-					0,
-					false,
-					false,
-					false,
-					161108400119289
-				]
-,				[
-					-1,
-					cr.system_object.prototype.cnds.CompareVar,
-					null,
-					0,
-					false,
-					false,
-					false,
-					9080963145562573
-					,[
-					[
-						11,
-						"soundstop"
-					]
-,					[
-						8,
-						4
-					]
-,					[
-						7,
-						[
-							0,
-							0
-						]
-					]
-					]
-				]
-				],
-				[
-				]
-				,[
-				[
-					0,
-					null,
-					false,
-					6314174876918731,
-					[
-					[
-						-1,
-						cr.system_object.prototype.cnds.Compare,
-						null,
-						0,
-						false,
-						false,
-						false,
-						2061408968464915
-						,[
-						[
-							7,
-							[
-								20,
-								9,
-								cr.plugins_.Audio.prototype.exps.PlaybackTime,
-								false,
-								null
-								,[
-[
-									2,
-									"s"
-								]
-								]
-							]
-						]
-,						[
-							8,
-							5
-						]
-,						[
-							7,
-							[
-								23,
-								"soundstop"
-							]
-						]
-						]
-					]
-					],
-					[
-					]
-					,[
-					[
-						0,
-						null,
-						false,
-						9788660741622454,
-						[
-						[
-							-1,
-							cr.system_object.prototype.cnds.CompareVar,
-							null,
-							0,
-							false,
-							false,
-							false,
-							9191401861029279
-							,[
-							[
-								11,
-								"soundloop"
-							]
-,							[
-								8,
-								0
-							]
-,							[
-								7,
-								[
-									0,
-									0
-								]
-							]
-							]
-						]
-						],
-						[
-						[
-							-1,
-							cr.system_object.prototype.acts.SetVar,
-							null,
-							5995285092043651
-							,[
-							[
-								11,
-								"soundstop"
-							]
-,							[
-								7,
-								[
-									0,
-									0
-								]
-							]
-							]
-						]
-,						[
-							-1,
-							cr.system_object.prototype.acts.SetVar,
-							null,
-							366210917358686
-							,[
-							[
-								11,
-								"soundstart"
-							]
-,							[
-								7,
-								[
-									0,
-									0
-								]
-							]
-							]
-						]
-,						[
-							-1,
-							cr.system_object.prototype.acts.SetVar,
-							null,
-							2347540569552464
-							,[
-							[
-								11,
-								"soundloop"
-							]
-,							[
-								7,
-								[
-									0,
-									0
-								]
-							]
-							]
-						]
-,						[
-							9,
-							cr.plugins_.Audio.prototype.acts.Stop,
-							null,
-							4439415380074675
-							,[
-							[
-								1,
-								[
-									2,
-									"s"
-								]
-							]
-							]
-						]
-						]
-					]
-,					[
-						0,
-						null,
-						false,
-						1225694043500352,
-						[
-						[
-							-1,
-							cr.system_object.prototype.cnds.Else,
-							null,
-							0,
-							false,
-							false,
-							false,
-							3733638536676869
-						]
-						],
-						[
-						[
-							9,
-							cr.plugins_.Audio.prototype.acts.Seek,
-							null,
-							198927618909473
-							,[
-							[
-								1,
-								[
-									2,
-									"s"
-								]
-							]
-,							[
-								0,
-								[
-									23,
-									"soundstart"
-								]
-							]
-							]
-						]
-						]
-					]
-					]
-				]
-				]
-			]
-,			[
-				0,
-				null,
-				false,
-				5460556737167933,
-				[
-				[
-					-1,
-					cr.system_object.prototype.cnds.EveryTick,
-					null,
-					0,
-					false,
-					false,
-					false,
-					6663016482775857
-				]
-,				[
-					-1,
-					cr.system_object.prototype.cnds.CompareVar,
-					null,
-					0,
-					false,
-					false,
-					false,
-					663172984105494
-					,[
-					[
-						11,
-						"soundstop"
-					]
-,					[
-						8,
-						0
-					]
-,					[
-						7,
-						[
-							0,
-							0
-						]
-					]
-					]
-				]
-,				[
-					9,
-					cr.plugins_.Audio.prototype.cnds.IsAnyPlaying,
-					null,
-					0,
-					false,
-					false,
-					false,
-					5719359417934325
-				]
-				],
-				[
-				[
-					9,
-					cr.plugins_.Audio.prototype.acts.Stop,
-					null,
-					4668022232512251
-					,[
-					[
-						1,
-						[
-							2,
-							"s"
-						]
-					]
-					]
-				]
 				]
 			]
 			]
@@ -41275,6 +40825,77 @@ false,false,6968149240710717
 			]
 			],
 			[
+			[
+				9,
+				cr.plugins_.Audio.prototype.acts.Play,
+				null,
+				8629378706876403
+				,[
+				[
+					2,
+					["bj",false]
+				]
+,				[
+					3,
+					0
+				]
+,				[
+					0,
+					[
+						0,
+						0
+					]
+				]
+,				[
+					1,
+					[
+						2,
+						"r"
+					]
+				]
+				]
+			]
+,			[
+				9,
+				cr.plugins_.Audio.prototype.acts.Seek,
+				null,
+				7206656813533475
+				,[
+				[
+					1,
+					[
+						2,
+						"r"
+					]
+				]
+,				[
+					0,
+					[
+						1,
+						26.2
+					]
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.acts.SetVar,
+				null,
+				2744740119244028
+				,[
+				[
+					11,
+					"audiostop"
+				]
+,				[
+					7,
+					[
+						1,
+						26.9
+					]
+				]
+				]
+			]
 			]
 		]
 ,		[
@@ -41574,197 +41195,6 @@ false,false,6968149240710717
 			]
 			]
 		]
-,		[
-			0,
-			null,
-			false,
-			2001770470940707,
-			[
-			[
-				-1,
-				cr.system_object.prototype.cnds.EveryTick,
-				null,
-				0,
-				false,
-				false,
-				false,
-				7552672952392624
-			]
-,			[
-				-1,
-				cr.system_object.prototype.cnds.CompareVar,
-				null,
-				0,
-				false,
-				false,
-				false,
-				1752693193678909
-				,[
-				[
-					11,
-					"audiostop"
-				]
-,				[
-					8,
-					4
-				]
-,				[
-					7,
-					[
-						0,
-						0
-					]
-				]
-				]
-			]
-,			[
-				-1,
-				cr.system_object.prototype.cnds.Compare,
-				null,
-				0,
-				false,
-				false,
-				false,
-				8883856538447153
-				,[
-				[
-					7,
-					[
-						20,
-						9,
-						cr.plugins_.Audio.prototype.exps.PlaybackTime,
-						false,
-						null
-						,[
-[
-							2,
-							"r"
-						]
-						]
-					]
-				]
-,				[
-					8,
-					5
-				]
-,				[
-					7,
-					[
-						23,
-						"audiostop"
-					]
-				]
-				]
-			]
-			],
-			[
-			[
-				9,
-				cr.plugins_.Audio.prototype.acts.Seek,
-				null,
-				702252130584094
-				,[
-				[
-					1,
-					[
-						2,
-						"r"
-					]
-				]
-,				[
-					0,
-					[
-						0,
-						180
-					]
-				]
-				]
-			]
-,			[
-				-1,
-				cr.system_object.prototype.acts.SetVar,
-				null,
-				4982893086951105
-				,[
-				[
-					11,
-					"audiostop"
-				]
-,				[
-					7,
-					[
-						0,
-						0
-					]
-				]
-				]
-			]
-			]
-		]
-,		[
-			0,
-			null,
-			false,
-			64282305351538,
-			[
-			[
-				-1,
-				cr.system_object.prototype.cnds.EveryTick,
-				null,
-				0,
-				false,
-				false,
-				false,
-				8878172452208154
-			]
-			],
-			[
-			[
-				40,
-				cr.plugins_.TextBox.prototype.acts.SetText,
-				null,
-				634701953959628
-				,[
-				[
-					1,
-					[
-						10,
-						[
-							10,
-							[
-								23,
-								"audiostop"
-							]
-							,[
-								2,
-								" "
-							]
-						]
-						,[
-							19,
-							cr.system_object.prototype.exps.str
-							,[
-[
-								20,
-								9,
-								cr.plugins_.Audio.prototype.exps.PlaybackTime,
-								false,
-								null
-								,[
-[
-									2,
-									"r"
-								]
-								]
-							]
-							]
-						]
-					]
-				]
-				]
-			]
-			]
-		]
 		]
 	]
 	],
@@ -41776,7 +41206,7 @@ false,false,6968149240710717
 	true,
 	true,
 	true,
-	"1.3.0.6",
+	"1.3.0.8",
 	2,
 	true,
 	3,
