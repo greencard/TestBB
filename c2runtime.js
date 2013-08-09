@@ -13537,7 +13537,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 			return;
@@ -13550,7 +13550,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13571,7 +13571,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13590,7 +13590,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 			return;
@@ -13603,7 +13603,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13624,7 +13624,7 @@ cr.plugins_.Audio = function(runtime)
 			return;
 		var v = dbToLinear(vol);
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
 		lastAudio = this.getAudioInstance(src, tag, is_music, looping!==0, v);
 		if (!lastAudio)
 		{
@@ -13664,7 +13664,7 @@ cr.plugins_.Audio = function(runtime)
 		if (silent)
 			return;
 		var is_music = file[1];
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
 		if (api === API_APPMOBI)
 		{
 			if (this.runtime.isDirectCanvas)
@@ -13684,7 +13684,7 @@ cr.plugins_.Audio = function(runtime)
 		if (silent)
 			return;
 		var is_music = (folder === 1);
-		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + filename.toLowerCase() + (useOgg ? ".mp3" : ".mp3");
 		if (api === API_APPMOBI)
 		{
 			if (this.runtime.isDirectCanvas)
@@ -13806,7 +13806,7 @@ cr.plugins_.Audio = function(runtime)
 		if (api !== API_WEBAUDIO)
 			return;
 		var doNormalize = (norm === 0);
-		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".ogg" : ".m4a");
+		var src = this.runtime.files_subfolder + file[0] + (useOgg ? ".mp3" : ".mp3");
 		var b = this.getAudioBuffer(src, false);
 		tag = tag.toLowerCase();
 		mix = mix / 100;
@@ -41721,22 +41721,36 @@ false,false,6968149240710717
 				[
 					1,
 					[
-						19,
-						cr.system_object.prototype.exps.str
-						,[
-[
-							20,
-							9,
-							cr.plugins_.Audio.prototype.exps.PlaybackTime,
-							false,
-							null
-							,[
-[
-								2,
-								"r"
+						10,
+						[
+							10,
+							[
+								23,
+								"audiostop"
 							]
+							,[
+								2,
+								" "
 							]
 						]
+						,[
+							19,
+							cr.system_object.prototype.exps.str
+							,[
+[
+								20,
+								9,
+								cr.plugins_.Audio.prototype.exps.PlaybackTime,
+								false,
+								null
+								,[
+[
+									2,
+									"r"
+								]
+								]
+							]
+							]
 						]
 					]
 				]
@@ -41755,7 +41769,7 @@ false,false,6968149240710717
 	true,
 	true,
 	true,
-	"1.3.0.5",
+	"1.3.0.6",
 	2,
 	true,
 	3,
