@@ -41558,16 +41558,16 @@ false,false,6968149240710717
 			],
 			[
 			[
-				6,
-				cr.plugins_.Browser.prototype.acts.Alert,
+				9,
+				cr.plugins_.Audio.prototype.acts.Stop,
 				null,
-				7646661149533449
+				9763698272928386
 				,[
 				[
-					7,
+					1,
 					[
 						2,
-						"Search"
+						"r"
 					]
 				]
 				]
@@ -41686,7 +41686,7 @@ false,false,6968149240710717
 	true,
 	true,
 	true,
-	"1.3.0.3",
+	"1.3.0.4",
 	2,
 	true,
 	3,
