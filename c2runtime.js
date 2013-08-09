@@ -41602,22 +41602,15 @@ false,false,4969725124143742
 			]
 ,			[
 				3,
-				cr.plugins_.AJAX.prototype.acts.Post,
+				cr.plugins_.AJAX.prototype.acts.Request,
 				null,
-				7524933148187775
+				7334879737025376
 				,[
 				[
 					1,
 					[
 						2,
 						"login"
-					]
-				]
-,				[
-					1,
-					[
-						2,
-						"http://109.86.74.208/bj/game2.php"
 					]
 				]
 ,				[
@@ -41630,7 +41623,7 @@ false,false,4969725124143742
 								10,
 								[
 									2,
-									"action=login&phone="
+									"http://109.86.74.208/bj/game2.php?action=login&phone="
 								]
 								,[
 									20,
@@ -42014,7 +42007,7 @@ false,false,4969725124143742
 	true,
 	true,
 	true,
-	"1.2.9",
+	"1.3.0.1",
 	2,
 	true,
 	3,
