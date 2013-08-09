@@ -41474,7 +41474,7 @@ false,false,6968149240710717
 				,[
 				[
 					2,
-					["bj2",true]
+					["bj",false]
 				]
 ,				[
 					3,
@@ -41673,6 +41673,75 @@ false,false,6968149240710717
 				]
 				]
 			]
+,			[
+				-1,
+				cr.system_object.prototype.acts.SetVar,
+				null,
+				4982893086951105
+				,[
+				[
+					11,
+					"audiostop"
+				]
+,				[
+					7,
+					[
+						0,
+						0
+					]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			64282305351538,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.EveryTick,
+				null,
+				0,
+				false,
+				false,
+				false,
+				8878172452208154
+			]
+			],
+			[
+			[
+				40,
+				cr.plugins_.TextBox.prototype.acts.SetText,
+				null,
+				634701953959628
+				,[
+				[
+					1,
+					[
+						19,
+						cr.system_object.prototype.exps.str
+						,[
+[
+							20,
+							9,
+							cr.plugins_.Audio.prototype.exps.PlaybackTime,
+							false,
+							null
+							,[
+[
+								2,
+								"r"
+							]
+							]
+						]
+						]
+					]
+				]
+				]
+			]
 			]
 		]
 		]
@@ -41686,7 +41755,7 @@ false,false,6968149240710717
 	true,
 	true,
 	true,
-	"1.3.0.4",
+	"1.3.0.5",
 	2,
 	true,
 	3,
