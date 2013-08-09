@@ -36220,7 +36220,7 @@ false,false,4969725124143742
 					,[
 					[
 						2,
-						["bj",false]
+						["bj2",true]
 					]
 ,					[
 						3,
@@ -41114,6 +41114,13 @@ false,false,4969725124143742
 		"Login Events",
 		[
 		[
+			1,
+			"audiostop",
+			0,
+			0,
+false,false,6968149240710717
+		]
+,		[
 			0,
 			null,
 			false,
@@ -41460,16 +41467,72 @@ false,false,4969725124143742
 			],
 			[
 			[
-				6,
-				cr.plugins_.Browser.prototype.acts.Alert,
+				9,
+				cr.plugins_.Audio.prototype.acts.Play,
 				null,
-				7838433775294565
+				9530495054748007
 				,[
 				[
-					7,
+					2,
+					["bj2",true]
+				]
+,				[
+					3,
+					0
+				]
+,				[
+					0,
+					[
+						0,
+						0
+					]
+				]
+,				[
+					1,
 					[
 						2,
-						"Menu"
+						"r"
+					]
+				]
+				]
+			]
+,			[
+				9,
+				cr.plugins_.Audio.prototype.acts.Seek,
+				null,
+				3502046920667734
+				,[
+				[
+					1,
+					[
+						2,
+						"r"
+					]
+				]
+,				[
+					0,
+					[
+						1,
+						26.2
+					]
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.acts.SetVar,
+				null,
+				5939864670143733
+				,[
+				[
+					11,
+					"audiostop"
+				]
+,				[
+					7,
+					[
+						1,
+						26.9
 					]
 				]
 				]
@@ -41505,6 +41568,107 @@ false,false,4969725124143742
 					[
 						2,
 						"Search"
+					]
+				]
+				]
+			]
+			]
+		]
+,		[
+			0,
+			null,
+			false,
+			2001770470940707,
+			[
+			[
+				-1,
+				cr.system_object.prototype.cnds.EveryTick,
+				null,
+				0,
+				false,
+				false,
+				false,
+				7552672952392624
+			]
+,			[
+				-1,
+				cr.system_object.prototype.cnds.CompareVar,
+				null,
+				0,
+				false,
+				false,
+				false,
+				1752693193678909
+				,[
+				[
+					11,
+					"audiostop"
+				]
+,				[
+					8,
+					4
+				]
+,				[
+					7,
+					[
+						0,
+						0
+					]
+				]
+				]
+			]
+,			[
+				-1,
+				cr.system_object.prototype.cnds.Compare,
+				null,
+				0,
+				false,
+				false,
+				false,
+				8883856538447153
+				,[
+				[
+					7,
+					[
+						20,
+						9,
+						cr.plugins_.Audio.prototype.exps.PlaybackTime,
+						false,
+						null
+						,[
+[
+							2,
+							"r"
+						]
+						]
+					]
+				]
+,				[
+					8,
+					5
+				]
+,				[
+					7,
+					[
+						23,
+						"audiostop"
+					]
+				]
+				]
+			]
+			],
+			[
+			[
+				9,
+				cr.plugins_.Audio.prototype.acts.Stop,
+				null,
+				6221245720701555
+				,[
+				[
+					1,
+					[
+						2,
+						"r"
 					]
 				]
 				]
