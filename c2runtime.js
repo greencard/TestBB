@@ -41660,15 +41660,22 @@ false,false,6968149240710717
 			[
 			[
 				9,
-				cr.plugins_.Audio.prototype.acts.Stop,
+				cr.plugins_.Audio.prototype.acts.Seek,
 				null,
-				6221245720701555
+				702252130584094
 				,[
 				[
 					1,
 					[
 						2,
 						"r"
+					]
+				]
+,				[
+					0,
+					[
+						0,
+						180
 					]
 				]
 				]
